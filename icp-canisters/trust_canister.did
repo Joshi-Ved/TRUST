@@ -1,0 +1,85 @@
+type OrderStatus = variant {
+  Created;
+  PaymentVerified;
+  Accepted;
+  ProofSubmitted : record {
+    live_url : text;
+    platform : text;
+    submitted_at : nat64;
+  };
+  Approved;
+  Settled : record { tx_hash : opt text };
+  Disputed : record { reason : text };
+};
+
+type Order = record {
+  order_id : text;
+  evm_tx_hash : text;
+  advertiser_address : text;
+  influencer_address : text;
+  amount_usdc_raw : nat64;
+  status : OrderStatus;
+  created_at : nat64;
+  nonce : nat64;
+};
+
+type CreateOrderArgs = record {
+  order_id : text;
+  evm_tx_hash : text;
+  advertiser_address : text;
+  influencer_address : text;
+  amount_usdc_raw : nat64;
+};
+
+type SubmitProofArgs = record {
+  order_id : text;
+  live_url : text;
+  platform : text;
+};
+
+type SettlementSignatureResponse = record {
+  order_id : text;
+  influencer_address : text;
+  amount_usdc_raw : nat64;
+  nonce : nat64;
+  signature_hex : text;
+};
+
+type InfluencerProfile = record {
+  principal : principal;
+  evm_address : text;
+  handle : text;
+  platform : text;
+  followers : nat64;
+  avg_views : nat64;
+  engagement_rate_bps : nat32;
+  bot_score_pct : nat8;
+};
+
+type HttpHeader = record {
+  name : text;
+  value : text;
+};
+
+type HttpResponse = record {
+  status : nat;
+  headers : vec HttpHeader;
+  body : blob;
+};
+
+type TransformArgs = record {
+  response : HttpResponse;
+  context : blob;
+};
+
+service : {
+  "initiate_order" : (CreateOrderArgs) -> (variant { Ok : Order; Err : text });
+  "verify_payment" : (text) -> (variant { Ok : Order; Err : text });
+  "accept_order" : (text, text) -> (variant { Ok : Order; Err : text });
+  "submit_proof" : (SubmitProofArgs, text) -> (variant { Ok : Order; Err : text });
+  "approve_and_release" : (text, text, nat64, text) -> (variant { Ok : SettlementSignatureResponse; Err : text });
+  "get_order" : (text) -> (opt Order) query;
+  "list_orders" : () -> (vec Order) query;
+  "list_influencers" : () -> (vec InfluencerProfile) query;
+  "transform_http_response" : (TransformArgs) -> (HttpResponse) query;
+}

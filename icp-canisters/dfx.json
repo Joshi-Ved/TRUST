@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "canisters": {
+    "trust_order_engine": {
+      "type": "rust",
+      "package": "trust_order_engine",
+      "candid": "trust_canister.did"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:4943",
+      "type": "ephemeral"
+    },
+    "ic": {
+      "providers": ["https://icp0.io"],
+      "type": "persistent"
+    }
+  }
+}

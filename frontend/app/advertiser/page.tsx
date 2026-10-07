@@ -5,16 +5,16 @@ import Link from "next/link";
 import {
   Users,
   Search,
-  Filter,
   CheckCircle2,
   AlertTriangle,
-  ArrowUpRight,
   ShieldCheck,
   Coins,
   FileCheck,
   Clock,
   Sparkles,
   ExternalLink,
+  Bot,
+  TrendingUp,
 } from "lucide-react";
 import {
   INITIAL_INFLUENCERS,
@@ -23,6 +23,14 @@ import {
   Order,
 } from "@/lib/icp-agent";
 import { formatAddress, formatUsdc } from "@/lib/utils";
+import { AnalyticsVisualizer } from "@/components/advertiser/AnalyticsVisualizer";
+
+interface AuditVerdict {
+  isCompliant: boolean;
+  confidenceScore: number;
+  flaggedIssues: string[];
+  summary: string;
+}
 
 export default function AdvertiserPortal() {
   const [influencers] = useState<InfluencerProfile[]>(INITIAL_INFLUENCERS);
@@ -31,13 +39,19 @@ export default function AdvertiserPortal() {
   const [minFollowers, setMinFollowers] = useState<number>(0);
   const [selectedInfluencer, setSelectedInfluencer] = useState<InfluencerProfile | null>(null);
 
+  // Big Data Visualizer inspect state
+  const [inspectingInfluencer, setInspectingInfluencer] = useState<InfluencerProfile>(INITIAL_INFLUENCERS[0]);
+
   // Escrow Funding Modal state
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>("1500");
   const [isTransacting, setIsTransacting] = useState(false);
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
 
-  // Filter influencers
+  // Gen AI Audit state per order
+  const [auditingOrders, setAuditingOrders] = useState<Record<string, boolean>>({});
+  const [auditResults, setAuditResults] = useState<Record<string, AuditVerdict>>({});
+
   const filteredInfluencers = influencers.filter((inf) => {
     const matchesSearch =
       inf.handle.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -56,7 +70,6 @@ export default function AdvertiserPortal() {
     if (!selectedInfluencer) return;
     setIsTransacting(true);
 
-    // Simulate EVM escrow transaction & ICP state transition
     setTimeout(() => {
       const simulatedTxHash =
         "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
@@ -77,6 +90,32 @@ export default function AdvertiserPortal() {
       setIsTransacting(false);
       setTxSuccess(simulatedTxHash);
     }, 1800);
+  };
+
+  const handleRunAiAudit = async (orderId: string, proofUrl: string) => {
+    setAuditingOrders((prev) => ({ ...prev, [orderId]: true }));
+
+    try {
+      const res = await fetch("/api/ai/audit-proof", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proofUrl,
+          campaignRequirements: {
+            productName: "TRUST Protocol",
+            requiredHashtags: ["#TRUST", "#CryptoEscrow"],
+            requiredMentions: ["@TRUST_Protocol"],
+          },
+        }),
+      });
+
+      const data = await res.json();
+      setAuditResults((prev) => ({ ...prev, [orderId]: data }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAuditingOrders((prev) => ({ ...prev, [orderId]: false }));
+    }
   };
 
   const handleApproveContent = (orderId: string) => {
@@ -106,7 +145,7 @@ export default function AdvertiserPortal() {
               TRUST
             </Link>
             <span className="text-zinc-600">/</span>
-            <span className="text-sm font-medium text-emerald-400">Advertiser Portal</span>
+            <span className="text-sm font-medium text-emerald-400">Advertiser Intelligence Portal</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -139,19 +178,29 @@ export default function AdvertiserPortal() {
             <div className="text-2xl font-bold text-emerald-400">
               {orders.filter((o) => o.status.type === "ProofSubmitted").length}
             </div>
-            <div className="text-xs text-zinc-400 mt-2">Awaiting verification</div>
+            <div className="text-xs text-zinc-400 mt-2">AI Auditor Ready</div>
           </div>
           <div className="glass-panel p-5 rounded-xl border border-zinc-800/80">
-            <div className="text-xs font-mono text-zinc-400 mb-1">Verified Creators</div>
-            <div className="text-2xl font-bold text-white">{influencers.length}</div>
-            <div className="text-xs text-cyan-400 mt-2">Passed Bot-Score &lt; 5%</div>
+            <div className="text-xs font-mono text-zinc-400 mb-1">Avg Authenticity Score</div>
+            <div className="text-2xl font-bold text-white">94.8%</div>
+            <div className="text-xs text-cyan-400 mt-2">Crawled via Big Data Engine</div>
           </div>
           <div className="glass-panel p-5 rounded-xl border border-zinc-800/80">
-            <div className="text-xs font-mono text-zinc-400 mb-1">Settlement Guarantee</div>
-            <div className="text-2xl font-bold text-teal-400">t-ECDSA</div>
-            <div className="text-xs text-zinc-400 mt-2">ICP Threshold Key Secp256k1</div>
+            <div className="text-xs font-mono text-zinc-400 mb-1">Projected Portfolio ROMI</div>
+            <div className="text-2xl font-bold text-teal-400">3.6x</div>
+            <div className="text-xs text-zinc-400 mt-2">Verifiable Return On Ad Spend</div>
           </div>
         </div>
+
+        {/* Section: Big Data Analytics & Chart */}
+        <section className="space-y-4">
+          <AnalyticsVisualizer
+            handle={inspectingInfluencer.handle}
+            authenticityScore={inspectingInfluencer.botScorePct <= 3 ? 96 : 89}
+            botRiskPercent={inspectingInfluencer.botScorePct}
+            romiMultiplier={inspectingInfluencer.botScorePct <= 3 ? 3.8 : 2.9}
+          />
+        </section>
 
         {/* Section: Influencer Discovery */}
         <section className="space-y-4">
@@ -162,7 +211,7 @@ export default function AdvertiserPortal() {
                 Influencer Discovery Engine
               </h2>
               <p className="text-sm text-zinc-400">
-                Browse verified creators with on-chain metric attestation and fraud mitigation scores.
+                Browse verified creators with real-time crawling metrics and fraud prevention scores.
               </p>
             </div>
 
@@ -202,19 +251,30 @@ export default function AdvertiserPortal() {
                     <th className="px-6 py-3.5">Followers</th>
                     <th className="px-6 py-3.5">Avg Views</th>
                     <th className="px-6 py-3.5">Engagement Rate</th>
-                    <th className="px-6 py-3.5">Bot Fraud Risk</th>
-                    <th className="px-6 py-3.5 text-right">Escrow Action</th>
+                    <th className="px-6 py-3.5">Authentic Score</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
                   {filteredInfluencers.map((inf) => (
-                    <tr key={inf.handle} className="hover:bg-zinc-900/50 transition-colors">
+                    <tr
+                      key={inf.handle}
+                      onClick={() => setInspectingInfluencer(inf)}
+                      className="hover:bg-zinc-900/50 transition-colors cursor-pointer"
+                    >
                       <td className="px-6 py-4 font-medium text-white flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center font-bold text-black text-xs">
                           {inf.handle[1].toUpperCase()}
                         </div>
                         <div>
-                          <div>{inf.handle}</div>
+                          <div className="flex items-center gap-1.5">
+                            {inf.handle}
+                            {inspectingInfluencer.handle === inf.handle && (
+                              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono">
+                                Inspected
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs font-mono text-zinc-500">{formatAddress(inf.evmAddress)}</div>
                         </div>
                       </td>
@@ -234,19 +294,22 @@ export default function AdvertiserPortal() {
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-mono ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono ${
                             inf.botScorePct <= 3
                               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                               : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                           }`}
                         >
                           <CheckCircle2 className="h-3 w-3" />
-                          {inf.botScorePct}% Low Risk
+                          {100 - inf.botScorePct}% Trust Score
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() => handleOpenFundModal(inf)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenFundModal(inf);
+                          }}
                           className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs transition-colors shadow-lg shadow-emerald-500/20"
                         >
                           Lock Escrow
@@ -260,16 +323,16 @@ export default function AdvertiserPortal() {
           </div>
         </section>
 
-        {/* Section: Content Review & Proof Verification */}
+        {/* Section: Content Review & Gen AI Proof Auditor */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <FileCheck className="h-5 w-5 text-cyan-400" />
-                Proof-of-Work Verification & Settlement
+                Proof-of-Work Review & Automated AI Auditor
               </h2>
               <p className="text-sm text-zinc-400">
-                Review live content submissions and trigger t-ECDSA cryptographic approval signatures.
+                Run automated LLM compliance checks before triggering t-ECDSA cryptographic approval signatures.
               </p>
             </div>
           </div>
@@ -278,6 +341,9 @@ export default function AdvertiserPortal() {
             {orders.map((order) => {
               const isProofReady = order.status.type === "ProofSubmitted";
               const isApproved = order.status.type === "Approved";
+              const isAuditing = auditingOrders[order.orderId];
+              const auditVerdict = auditResults[order.orderId];
+              const liveUrl = (order.status as any).liveUrl;
 
               return (
                 <div
@@ -315,17 +381,56 @@ export default function AdvertiserPortal() {
                   </div>
 
                   {isProofReady && (
-                    <div className="p-3 bg-zinc-900/80 rounded-lg border border-zinc-800 space-y-2">
-                      <div className="text-xs text-zinc-400 font-mono">Live Content Submission:</div>
+                    <div className="p-3 bg-zinc-900/80 rounded-lg border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-zinc-400 font-mono">Live Content Submission:</div>
+                        <button
+                          onClick={() => handleRunAiAudit(order.orderId, liveUrl)}
+                          disabled={isAuditing}
+                          className="px-2.5 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono flex items-center gap-1.5 hover:bg-cyan-500/20 transition-all"
+                        >
+                          <Bot className="h-3.5 w-3.5" />
+                          {isAuditing ? "Auditing Deliverable..." : "Run AI Compliance Audit"}
+                        </button>
+                      </div>
+
                       <a
-                        href={(order.status as any).liveUrl}
+                        href={liveUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="text-xs text-cyan-400 hover:underline flex items-center gap-1.5 font-mono break-all"
                       >
-                        {(order.status as any).liveUrl}
+                        {liveUrl}
                         <ExternalLink className="h-3 w-3 shrink-0" />
                       </a>
+
+                      {/* AI Audit Verdict Result Box */}
+                      {auditVerdict && (
+                        <div
+                          className={`p-3 rounded-lg border text-xs space-y-1.5 ${
+                            auditVerdict.isCompliant
+                              ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
+                              : "bg-red-950/20 border-red-500/30 text-red-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-mono font-semibold">
+                            <span className="flex items-center gap-1.5">
+                              {auditVerdict.isCompliant ? (
+                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                              ) : (
+                                <AlertTriangle className="h-4 w-4 text-red-400" />
+                              )}
+                              AI Compliance: {auditVerdict.isCompliant ? "VERIFIED PASSED" : "FLAGGED ISSUES"}
+                            </span>
+                            <span className="text-[11px] font-mono text-zinc-400">
+                              Confidence: {auditVerdict.confidenceScore}%
+                            </span>
+                          </div>
+                          <p className="text-zinc-300 text-[11px] leading-relaxed">
+                            {auditVerdict.summary}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 

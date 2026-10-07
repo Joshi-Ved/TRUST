@@ -1,0 +1,75 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model InfluencerProfile {
+  id                   String               @id @default(uuid())
+  handle               String               @unique
+  platform             String               // "TWITTER", "LENS", "INSTAGRAM", "YOUTUBE"
+  evmAddress           String               @unique
+  principalId          String?
+  followers            Int                  @default(0)
+  following            Int                  @default(0)
+  authenticityScore    Float                @default(85.0) // 0 - 100
+  botRiskPercent       Float                @default(5.0)
+  romiMultiplier       Float                @default(3.2) // e.g. 3.2x projected return
+  lastCrawledAt        DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  posts                Post[]
+  snapshots            EngagementSnapshot[]
+
+  @@index([platform, handle])
+}
+
+model Post {
+  id               String       @id @default(uuid())
+  influencerId     String
+  influencer       InfluencerProfile @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  externalPostId   String       @unique
+  url              String
+  contentText      String
+  mediaType        String       @default("text") // "text", "image", "video"
+  likes            Int          @default(0)
+  reposts          Int          @default(0)
+  views            Int          @default(0)
+  commentCount     Int          @default(0)
+  postedAt         DateTime
+  createdAt        DateTime     @default(now())
+
+  comments         Comment[]
+
+  @@index([influencerId, postedAt])
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      String
+  text        String
+  sentiment   Float?   // -1.0 to 1.0
+  isSuspectedBot Boolean @default(false)
+  postedAt    DateTime @default(now())
+
+  @@index([postId])
+}
+
+model EngagementSnapshot {
+  id               String            @id @default(uuid())
+  influencerId     String
+  influencer       InfluencerProfile @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  timestamp        DateTime          @default(now())
+  followers        Int
+  avgEngagementRate Float
+  commentEntropy   Float             // Metric measuring diversity of comment vocabulary
+  botRingsDetected Int               @default(0)
+
+  @@index([influencerId, timestamp])
+}

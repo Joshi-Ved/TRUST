@@ -90,3 +90,6 @@ export interface _SERVICE {
   list_influencers: ActorMethod<[], Array<InfluencerProfile>>;
   transform_http_response: ActorMethod<[TransformArgs], HttpResponse>;
 }
+
+export declare const idlFactory: ({ IDL }: { IDL: any }) => any;
+export declare const init: ({ IDL }: { IDL: any }) => any[];

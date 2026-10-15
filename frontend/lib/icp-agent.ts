@@ -27,6 +27,8 @@ export interface Order {
   status: OrderStatus;
   createdAt: number;
   nonce: number;
+  onChain?: boolean; // true when funded via a real TrustEscrow deposit
+  signature?: string; // settlement signature from the ICP canister (t-ECDSA)
 }
 
 // Initial mock data simulating on-chain ICP state

@@ -35,26 +35,26 @@ export function AnalyticsVisualizer({
   const maxViews = Math.max(...reachData.map((d) => Math.max(d.views, d.expected)));
 
   return (
-    <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+    <div className="glass-panel p-6 rounded-lg border border-gray-200 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-4">
         <div>
-          <div className="text-xs font-mono text-emerald-400">BIG DATA AUDIT ENGINE</div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="text-xs  text-[#714b67]">BIG DATA AUDIT ENGINE</div>
+          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             Historical Reach Consistency & Bot Analysis
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-normal">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 font-normal">
               {handle}
             </span>
           </h3>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-mono">
+        <div className="flex items-center gap-4 text-xs ">
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm bg-emerald-400 inline-block" />
-            <span className="text-zinc-400">Delivered Reach</span>
+            <span className="h-2.5 w-2.5 rounded-sm bg-[#714b67] inline-block" />
+            <span className="text-gray-600">Delivered Reach</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm bg-zinc-600 inline-block" />
-            <span className="text-zinc-400">Benchmark Expectation</span>
+            <span className="h-2.5 w-2.5 rounded-sm bg-gray-400 inline-block" />
+            <span className="text-gray-600">Benchmark Expectation</span>
           </div>
         </div>
       </div>
@@ -72,9 +72,9 @@ export function AnalyticsVisualizer({
                   {/* Delivered bar */}
                   <div
                     style={{ height: `${deliveredHeight}%` }}
-                    className="w-1/2 max-w-[28px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t group-hover:brightness-125 transition-all relative"
+                    className="w-1/2 max-w-[28px] bg-gradient-to-t from-[#714b67] to-[#714b67] rounded-t group-hover:brightness-125 transition-all relative"
                   >
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 px-1.5 py-0.5 rounded text-[10px] font-mono text-white pointer-events-none whitespace-nowrap z-10 shadow-lg">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-100 border border-gray-300 px-1.5 py-0.5 rounded text-[10px]  text-gray-900 pointer-events-none whitespace-nowrap z-10 shadow-lg">
                       {(item.views / 1000).toFixed(1)}k
                     </div>
                   </div>
@@ -82,10 +82,10 @@ export function AnalyticsVisualizer({
                   {/* Benchmark bar */}
                   <div
                     style={{ height: `${benchmarkHeight}%` }}
-                    className="w-1/2 max-w-[28px] bg-zinc-700/60 rounded-t border-t border-zinc-500 relative"
+                    className="w-1/2 max-w-[28px] bg-gray-300 rounded-t border-t border-gray-400 relative"
                   />
                 </div>
-                <span className="text-[11px] font-mono text-zinc-400">{item.month}</span>
+                <span className="text-[11px]  text-gray-600">{item.month}</span>
               </div>
             );
           })}
@@ -95,49 +95,49 @@ export function AnalyticsVisualizer({
       {/* Metric Breakdown Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
         {/* Metric 1 */}
-        <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-          <div className="text-xs text-zinc-400 font-mono">Authenticity Index</div>
-          <div className="text-2xl font-bold text-white font-mono flex items-center justify-between">
+        <div className="p-4 rounded-md bg-gray-50 border border-gray-200 space-y-1.5">
+          <div className="text-xs text-gray-600 ">Authenticity Index</div>
+          <div className="text-2xl font-bold text-gray-900  flex items-center justify-between">
             <span>{authenticityScore}%</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-sans">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#714b67]/10 text-[#714b67] border border-[#714b67]/40 font-sans">
               High Trust
             </span>
           </div>
-          <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+          <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
             <div
               style={{ width: `${authenticityScore}%` }}
-              className="bg-emerald-400 h-full rounded-full"
+              className="bg-[#714b67] h-full rounded-full"
             />
           </div>
         </div>
 
         {/* Metric 2 */}
-        <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-          <div className="text-xs text-zinc-400 font-mono">Suspicious Bot Entropy</div>
-          <div className="text-2xl font-bold text-cyan-400 font-mono flex items-center justify-between">
+        <div className="p-4 rounded-md bg-gray-50 border border-gray-200 space-y-1.5">
+          <div className="text-xs text-gray-600 ">Suspicious Bot Entropy</div>
+          <div className="text-2xl font-bold text-[#017e84]  flex items-center justify-between">
             <span>{botRiskPercent}%</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-sans">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 font-sans">
               Clean Audience
             </span>
           </div>
-          <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+          <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
             <div
               style={{ width: `${botRiskPercent}%` }}
-              className="bg-cyan-400 h-full rounded-full"
+              className="bg-[#017e84] h-full rounded-full"
             />
           </div>
         </div>
 
         {/* Metric 3 */}
-        <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-          <div className="text-xs text-zinc-400 font-mono">Projected ROMI Multiplier</div>
-          <div className="text-2xl font-bold text-teal-400 font-mono flex items-center justify-between">
+        <div className="p-4 rounded-md bg-gray-50 border border-gray-200 space-y-1.5">
+          <div className="text-xs text-gray-600 ">Projected ROMI Multiplier</div>
+          <div className="text-2xl font-bold text-[#017e84]  flex items-center justify-between">
             <span>{romiMultiplier}x</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-sans">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 font-sans">
               High ROI
             </span>
           </div>
-          <p className="text-[11px] text-zinc-400">
+          <p className="text-[11px] text-gray-600">
             Estimated conversion value per $1 USDC locked in escrow.
           </p>
         </div>

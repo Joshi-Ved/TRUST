@@ -189,59 +189,59 @@ export default function AdvertiserPortal() {
   };
 
   return (
-    <div className="min-h-screen text-zinc-100 flex flex-col">
+    <div className="min-h-screen text-gray-900 flex flex-col">
       <Navbar />
 
       <main className="max-w-[1440px] w-full mx-auto px-6 py-8 space-y-8 flex-1">
         {/* Bento Grid: Institutional High-Density Metrics with 3D Tilt */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-2xl border border-white/[0.08] relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mb-2 font-mono">
+            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
+              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
                 ACTIVE ESCROW LIQUIDITY
               </div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight tabular-nums">
-                $148,250.00 <span className="text-sm font-semibold text-emerald-400">USDC</span>
+              <div className="text-3xl font-extrabold text-gray-900  tracking-tight tabular-nums">
+                $148,250.00 <span className="text-sm font-semibold text-[#714b67]">USDC</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 font-medium">
+              <div className="flex items-center gap-2 mt-4 text-xs ">
+                <span className="px-2 py-0.5 rounded-full bg-[#714b67]/10 text-[#714b67] border border-[#714b67]/40 flex items-center gap-1 font-medium">
                   <ArrowUpRight className="h-3 w-3" /> +14.2% this week
                 </span>
-                <span className="text-zinc-500">• 100% On-Chain Protected</span>
+                <span className="text-gray-500">• 100% On-Chain Protected</span>
               </div>
             </div>
           </ThreeDCard>
 
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-2xl border border-white/[0.08] relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mb-2 font-mono">
+            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
+              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
                 AI AUDIT & COMPLIANCE VERIFICATION
               </div>
-              <div className="text-3xl font-extrabold text-cyan-400 font-mono tracking-tight tabular-nums">
-                98.4% <span className="text-sm font-semibold text-zinc-400 font-sans">Accuracy</span>
+              <div className="text-3xl font-extrabold text-[#017e84]  tracking-tight tabular-nums">
+                98.4% <span className="text-sm font-semibold text-gray-600 font-sans">Accuracy</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
-                <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1 font-medium">
+              <div className="flex items-center gap-2 mt-4 text-xs ">
+                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 flex items-center gap-1 font-medium">
                   <Zap className="h-3 w-3" /> Real-time multimodal analysis
                 </span>
-                <span className="text-zinc-500">• Zero Fraud Incidents</span>
+                <span className="text-gray-500">• Zero Fraud Incidents</span>
               </div>
             </div>
           </ThreeDCard>
 
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-2xl border border-white/[0.08] relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mb-2 font-mono">
+            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
+              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
                 PORTFOLIO ROMI MULTIPLIER
               </div>
-              <div className="text-3xl font-extrabold text-teal-400 font-mono tracking-tight tabular-nums">
-                3.85x <span className="text-sm font-semibold text-zinc-400 font-sans">Return</span>
+              <div className="text-3xl font-extrabold text-[#017e84]  tracking-tight tabular-nums">
+                3.85x <span className="text-sm font-semibold text-gray-600 font-sans">Return</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
-                <span className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 flex items-center gap-1 font-medium">
+              <div className="flex items-center gap-2 mt-4 text-xs ">
+                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 flex items-center gap-1 font-medium">
                   <ShieldCheck className="h-3 w-3" /> t-ECDSA Release Guarantee
                 </span>
-                <span className="text-zinc-500">• Verified Settlement</span>
+                <span className="text-gray-500">• Verified Settlement</span>
               </div>
             </div>
           </ThreeDCard>
@@ -261,29 +261,29 @@ export default function AdvertiserPortal() {
         <section className="space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-widest text-emerald-400 font-mono">
-                3D CREATOR MARKETPLACE MATRIX
+              <div className="text-[10px] uppercase font-bold tracking-wide text-[#714b67] ">
+                CREATOR MARKETPLACE
               </div>
-              <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                <Users className="h-5 w-5 text-emerald-400" />
+              <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                <Users className="h-5 w-5 text-[#714b67]" />
                 Verified Creators & Rate Cards
               </h2>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                 <input
                   type="text"
                   placeholder="Filter handle or platform..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-zinc-950/80 border border-white/[0.08] rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 font-mono w-56"
+                  className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-md text-xs text-gray-800 placeholder-zinc-500 focus:outline-none focus:border-[#714b67]/40  w-56"
                 />
               </div>
 
               <select
-                className="bg-zinc-950/80 border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none font-mono"
+                className="bg-white border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-700 focus:outline-none "
                 value={minFollowers}
                 onChange={(e) => setMinFollowers(Number(e.target.value))}
               >
@@ -306,58 +306,58 @@ export default function AdvertiserPortal() {
                   className="cursor-pointer"
                 >
                   <div
-                    className={`glass-terminal p-5 rounded-2xl border relative flex flex-col justify-between h-full ${
+                    className={`glass-terminal p-5 rounded-lg border relative flex flex-col justify-between h-full ${
                       isSelected
-                        ? "border-emerald-500/60 shadow-[0_0_30px_rgba(16,185,129,0.25)]"
-                        : "border-white/[0.07]"
+                        ? "border-[#714b67]/40 shadow-sm"
+                        : "border-gray-200"
                     }`}
                   >
                     <div className="space-y-4">
                       {/* Creator Header */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center font-extrabold text-black text-sm shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                          <div className="h-10 w-10 rounded-md bg-gradient-to-tr from-[#714b67] to-[#017e84] flex items-center justify-center font-extrabold text-white text-sm shadow-sm">
                             {inf.handle[1].toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-bold text-sm text-white flex items-center gap-1">
+                            <div className="font-bold text-sm text-gray-900 flex items-center gap-1">
                               {inf.handle}
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 inline" />
+                              <CheckCircle2 className="h-3.5 w-3.5 text-[#714b67] inline" />
                             </div>
-                            <div className="text-[10px] font-mono text-zinc-500">
+                            <div className="text-[10px]  text-gray-500">
                               {formatAddress(inf.evmAddress)}
                             </div>
                           </div>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-zinc-900 border border-white/[0.06] text-[10px] font-mono text-zinc-400">
+                        <span className="px-2 py-0.5 rounded bg-gray-100 border border-gray-200 text-[10px]  text-gray-600">
                           {inf.platform}
                         </span>
                       </div>
 
                       {/* 3D Trust Radial Metric */}
-                      <div className="p-3 rounded-xl bg-black/50 border border-white/[0.04] grid grid-cols-2 gap-2 font-mono text-xs">
+                      <div className="p-3 rounded-md bg-gray-50 border border-gray-100 grid grid-cols-2 gap-2  text-xs">
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">TRUST INDEX</div>
-                          <div className="text-sm font-bold text-emerald-400 tabular-nums flex items-center gap-1.5 mt-0.5">
-                            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">TRUST INDEX</div>
+                          <div className="text-sm font-bold text-[#714b67] tabular-nums flex items-center gap-1.5 mt-0.5">
+                            <span className="h-2 w-2 rounded-full bg-[#714b67] animate-pulse" />
                             {trustScore}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">ENGAGEMENT</div>
-                          <div className="text-sm font-bold text-white tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">ENGAGEMENT</div>
+                          <div className="text-sm font-bold text-gray-900 tabular-nums mt-0.5">
                             {(inf.engagementRateBps / 100).toFixed(2)}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">AUDIENCE</div>
-                          <div className="text-xs font-semibold text-zinc-300 tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">AUDIENCE</div>
+                          <div className="text-xs font-semibold text-gray-700 tabular-nums mt-0.5">
                             {inf.followers.toLocaleString()}
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">AVG VIEWS</div>
-                          <div className="text-xs font-semibold text-zinc-300 tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">AVG VIEWS</div>
+                          <div className="text-xs font-semibold text-gray-700 tabular-nums mt-0.5">
                             {inf.avgViews.toLocaleString()}
                           </div>
                         </div>
@@ -365,10 +365,10 @@ export default function AdvertiserPortal() {
                     </div>
 
                     {/* Action Bar */}
-                    <div className="pt-4 mt-3 border-t border-white/[0.06] flex items-center justify-between">
-                      <div className="font-mono text-xs">
-                        <span className="text-zinc-500 text-[10px] block">RATE</span>
-                        <span className="font-bold text-white tabular-nums">$1,500 USDC</span>
+                    <div className="pt-4 mt-3 border-t border-gray-200 flex items-center justify-between">
+                      <div className=" text-xs">
+                        <span className="text-gray-500 text-[10px] block">RATE</span>
+                        <span className="font-bold text-gray-900 tabular-nums">$1,500 USDC</span>
                       </div>
 
                       <button
@@ -376,7 +376,7 @@ export default function AdvertiserPortal() {
                           e.stopPropagation();
                           handleOpenFundModal(inf);
                         }}
-                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-black font-extrabold text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-1"
+                        className="px-3.5 py-1.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:brightness-110 text-white font-extrabold text-xs transition-all shadow-sm flex items-center gap-1"
                       >
                         Lock Escrow
                       </button>
@@ -392,11 +392,11 @@ export default function AdvertiserPortal() {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-widest text-cyan-400 font-mono">
+              <div className="text-[10px] uppercase font-bold tracking-wide text-[#017e84] ">
                 MULTIMODAL AUDIT VERIFICATION
               </div>
-              <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                <FileCheck className="h-5 w-5 text-cyan-400" />
+              <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                <FileCheck className="h-5 w-5 text-[#017e84]" />
                 Proof-of-Work Verification Suite
               </h2>
             </div>
@@ -413,46 +413,46 @@ export default function AdvertiserPortal() {
               return (
                 <div
                   key={order.orderId}
-                  className="glass-terminal p-6 rounded-2xl border border-white/[0.08] space-y-4"
+                  className="glass-terminal p-6 rounded-lg border border-gray-200 space-y-4"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs px-2.5 py-1 rounded-lg bg-black/50 border border-white/[0.06] text-zinc-400">
-                      ORDER ID: <span className="text-white font-semibold">{order.orderId}</span>
+                    <span className=" text-xs px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-600">
+                      ORDER ID: <span className="text-gray-900 font-semibold">{order.orderId}</span>
                     </span>
-                    <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="text-xs  px-2.5 py-0.5 rounded-full bg-[#714b67]/10 text-[#714b67] border border-[#714b67]/40">
                       {order.status.type}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-black/40 rounded-xl border border-white/[0.04] text-xs font-mono">
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-md border border-gray-100 text-xs ">
                     <div>
-                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">LOCKED VALUE</div>
-                      <div className="text-sm font-bold text-emerald-400 tabular-nums mt-0.5">
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">LOCKED VALUE</div>
+                      <div className="text-sm font-bold text-[#714b67] tabular-nums mt-0.5">
                         {formatUsdc(order.amountUsdcRaw)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">INFLUENCER</div>
-                      <div className="text-xs font-semibold text-zinc-300 mt-0.5">
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">INFLUENCER</div>
+                      <div className="text-xs font-semibold text-gray-700 mt-0.5">
                         {formatAddress(order.influencerAddress)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">EVM RECEIPT</div>
-                      <div className="text-xs text-cyan-400/90 mt-0.5">
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">EVM RECEIPT</div>
+                      <div className="text-xs text-[#017e84] mt-0.5">
                         {formatAddress(order.evmTxHash)}
                       </div>
                     </div>
                   </div>
 
                   {isProofReady && (
-                    <div className="p-4 bg-zinc-950/80 rounded-xl border border-white/[0.06] space-y-3">
+                    <div className="p-4 bg-white rounded-md border border-gray-200 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-zinc-400 font-mono">Live Link Deliverable:</div>
+                        <div className="text-xs text-gray-600 ">Live Link Deliverable:</div>
                         <button
                           onClick={() => handleRunAiAudit(order.orderId, liveUrl)}
                           disabled={isAuditing}
-                          className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono flex items-center gap-1.5 hover:bg-cyan-500/20 transition-all shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                          className="px-3 py-1.5 rounded-md bg-[#017e84]/10 border border-[#017e84]/40 text-[#017e84] text-xs  flex items-center gap-1.5 hover:bg-[#017e84]/10 transition-all shadow-sm"
                         >
                           <Radar className={`h-3.5 w-3.5 ${isAuditing ? "animate-spin" : ""}`} />
                           {isAuditing ? "Scanning with AI Radar..." : "Scan & Audit Content"}
@@ -463,7 +463,7 @@ export default function AdvertiserPortal() {
                         href={liveUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-cyan-400 hover:underline flex items-center gap-1.5 font-mono break-all"
+                        className="text-xs text-[#017e84] hover:underline flex items-center gap-1.5  break-all"
                       >
                         {liveUrl}
                         <ExternalLink className="h-3 w-3 shrink-0" />
@@ -471,26 +471,26 @@ export default function AdvertiserPortal() {
 
                       {auditVerdict && (
                         <div
-                          className={`p-3.5 rounded-xl border text-xs space-y-1.5 font-mono ${
+                          className={`p-3.5 rounded-md border text-xs space-y-1.5  ${
                             auditVerdict.isCompliant
-                              ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
-                              : "bg-red-950/20 border-red-500/30 text-red-300"
+                              ? "bg-[#714b67]/5 border-[#714b67]/40 text-[#714b67]"
+                              : "bg-red-50 border-red-300 text-red-600"
                           }`}
                         >
                           <div className="flex items-center justify-between font-semibold">
                             <span className="flex items-center gap-1.5">
                               {auditVerdict.isCompliant ? (
-                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                <CheckCircle2 className="h-4 w-4 text-[#714b67]" />
                               ) : (
-                                <AlertTriangle className="h-4 w-4 text-red-400" />
+                                <AlertTriangle className="h-4 w-4 text-red-600" />
                               )}
                               RADAR SCAN: {auditVerdict.isCompliant ? "100% COMPLIANT" : "FLAGGED ISSUES"}
                             </span>
-                            <span className="text-[11px] text-zinc-400 tabular-nums">
+                            <span className="text-[11px] text-gray-600 tabular-nums">
                               {auditVerdict.confidenceScore}% Confidence
                             </span>
                           </div>
-                          <p className="text-zinc-300 text-[11px] leading-relaxed font-sans">
+                          <p className="text-gray-700 text-[11px] leading-relaxed font-sans">
                             {auditVerdict.summary}
                           </p>
                         </div>
@@ -502,14 +502,14 @@ export default function AdvertiserPortal() {
                     {isProofReady && (
                       <button
                         onClick={() => handleApproveContent(order.orderId)}
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-black font-extrabold text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.35)] flex items-center gap-2 hover:brightness-110"
+                        className="px-5 py-2.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] text-white font-extrabold text-xs transition-all shadow-sm flex items-center gap-2 hover:brightness-110"
                       >
                         <Sparkles className="h-4 w-4" />
                         Approve & Emit t-ECDSA Release
                       </button>
                     )}
                     {isApproved && (
-                      <div className="text-xs text-emerald-400 font-mono flex items-center gap-2 font-semibold">
+                      <div className="text-xs text-[#714b67]  flex items-center gap-2 font-semibold">
                         <CheckCircle2 className="h-4 w-4" /> t-ECDSA Cryptographic Release Emitted
                       </div>
                     )}
@@ -523,55 +523,55 @@ export default function AdvertiserPortal() {
 
       {/* Hologram Escrow Funding Drawer with Laser Border */}
       {isFundModalOpen && selectedInfluencer && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
           <div className="w-full max-w-lg">
             <LaserBeamBorder glowColor="emerald">
               <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.25)]">
+                    <div className="h-9 w-9 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 flex items-center justify-center text-[#714b67] shadow-sm">
                       <Lock className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-base text-white">Smart Escrow Vault Deposit</h3>
-                      <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
+                      <h3 className="font-extrabold text-base text-gray-900">Smart Escrow Vault Deposit</h3>
+                      <div className="text-[10px]  text-gray-500 uppercase tracking-wide">
                         MULTI-STAGE CRYPTOGRAPHIC LOCK
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={() => setIsFundModalOpen(false)}
-                    className="text-zinc-500 hover:text-white transition-colors"
+                    className="text-gray-500 hover:text-gray-900 transition-colors"
                   >
                     ✕
                   </button>
                 </div>
 
                 {/* Progress Step Sequencer */}
-                <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono font-semibold">
+                <div className="grid grid-cols-3 gap-2 text-center text-[10px]  font-semibold">
                   <div
-                    className={`p-2 rounded-xl border ${
+                    className={`p-2 rounded-md border ${
                       fundStep >= 1
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
-                        : "bg-black/30 border-white/[0.05] text-zinc-500"
+                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
+                        : "bg-gray-50 border-gray-200 text-gray-500"
                     }`}
                   >
                     1. PERMIT USDC
                   </div>
                   <div
-                    className={`p-2 rounded-xl border ${
+                    className={`p-2 rounded-md border ${
                       fundStep >= 2
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
-                        : "bg-black/30 border-white/[0.05] text-zinc-500"
+                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
+                        : "bg-gray-50 border-gray-200 text-gray-500"
                     }`}
                   >
                     2. LOCK ON EVM
                   </div>
                   <div
-                    className={`p-2 rounded-xl border ${
+                    className={`p-2 rounded-md border ${
                       fundStep >= 3
-                        ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
-                        : "bg-black/30 border-white/[0.05] text-zinc-500"
+                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
+                        : "bg-gray-50 border-gray-200 text-gray-500"
                     }`}
                   >
                     3. CANISTER SYNC
@@ -580,19 +580,19 @@ export default function AdvertiserPortal() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 font-mono">
+                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
                       BENEFICIARY CREATOR
                     </label>
-                    <div className="mt-1 p-3 bg-black/40 rounded-xl border border-white/[0.06] flex justify-between items-center text-xs">
-                      <span className="font-bold text-white font-mono">{selectedInfluencer.handle}</span>
-                      <span className="font-mono text-zinc-500 text-[11px]">
+                    <div className="mt-1 p-3 bg-gray-50 rounded-md border border-gray-200 flex justify-between items-center text-xs">
+                      <span className="font-bold text-gray-900 ">{selectedInfluencer.handle}</span>
+                      <span className=" text-gray-500 text-[11px]">
                         {formatAddress(selectedInfluencer.evmAddress)}
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 font-mono">
+                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
                       ESCROW VALUE (USDC)
                     </label>
                     <div className="relative mt-1">
@@ -601,17 +601,17 @@ export default function AdvertiserPortal() {
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
                         disabled={fundStep > 1}
-                        className="w-full px-4 py-3 bg-black/50 border border-white/[0.08] rounded-xl text-white font-mono text-lg focus:outline-none focus:border-emerald-500 tabular-nums"
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md text-gray-900  text-lg focus:outline-none focus:border-[#714b67] tabular-nums"
                         placeholder="2400"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-zinc-400 font-bold">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2  text-xs text-gray-600 font-bold">
                         USDC
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-zinc-950/70 rounded-xl border border-white/[0.06] text-xs text-zinc-400 space-y-1">
-                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold font-mono text-[11px]">
+                  <div className="p-3 bg-white rounded-md border border-gray-200 text-xs text-gray-600 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[#714b67] font-semibold  text-[11px]">
                       <Clock className="h-3.5 w-3.5" /> 7-DAY UNILATERAL REFUND TIMELOCK
                     </div>
                     <p className="text-[11px] leading-relaxed">
@@ -621,32 +621,32 @@ export default function AdvertiserPortal() {
                   </div>
 
                   {txSuccessHash && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono space-y-1">
+                    <div className="p-3 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 text-[#714b67] text-xs  space-y-1">
                       <div className="font-bold">EVM Deposit Mined Successfully:</div>
-                      <div className="break-all text-[11px] text-emerald-300/80">{txSuccessHash}</div>
+                      <div className="break-all text-[11px] text-[#714b67]">{txSuccessHash}</div>
                     </div>
                   )}
                 </div>
 
                 {txError && (
-                  <div className="text-[11px] font-mono text-red-400 break-words border border-red-500/30 rounded-lg p-2">{txError}</div>
+                  <div className="text-[11px]  text-red-600 break-words border border-red-300 rounded-lg p-2">{txError}</div>
                 )}
 
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     onClick={() => setIsFundModalOpen(false)}
-                    className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-white"
+                    className="px-4 py-2 text-xs  text-gray-600 hover:text-gray-900"
                   >
                     Cancel
                   </button>
                   <button
                     disabled={isTransacting}
                     onClick={handleNextFundingStep}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs transition-all disabled:opacity-50 flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.35)]"
+                    className="px-6 py-2.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:from-[#714b67] hover:to-[#5d3c54] text-white font-extrabold text-xs transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
                   >
                     {isTransacting ? (
                       <>
-                        <span className="h-3.5 w-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         Executing Stage {fundStep}...
                       </>
                     ) : fundStep === 1 ? (

@@ -46,7 +46,7 @@ Output strictly JSON format with schema:
             },
             {
               role: "user",
-              content: `Campaign Requirements: ${JSON.stringify(campaignRequirements)}\nSubmitted Proof Link: ${proofUrl}\nExtracted Content: ${contentText || "Live social post on X / Lens with verified campaign copy"}`,
+              content: `Campaign Requirements: ${JSON.stringify(campaignRequirements)}\nSubmitted Proof Link: ${proofUrl}\nExtracted Content: ${contentText}`,
             },
           ],
           response_format: { type: "json_object" },
@@ -61,8 +61,11 @@ Output strictly JSON format with schema:
       }
     }
 
-    // High-precision automated heuristic audit
-    const sampleText = contentText || "Delighted to announce our partnership with TRUST Protocol! Smart escrow on EVM ensures zero counterparty default for creators. Check them out #TRUST #CryptoEscrow";
+    // Without real post text there is nothing to audit. Never pass a made-up sample.
+    if (!contentText) {
+      return NextResponse.json({ error: "contentText is required. Crawl the post first via /api/audit." }, { status: 400 });
+    }
+    const sampleText = contentText;
 
     const flaggedIssues: string[] = [];
     const lowerText = sampleText.toLowerCase();
@@ -82,16 +85,12 @@ Output strictly JSON format with schema:
     }
 
     const isCompliant = flaggedIssues.length === 0;
-    const confidenceScore = isCompliant ? 98 : 72;
+    const confidenceScore = 100; // deterministic text match, not a model estimate
 
     return NextResponse.json({
       isCompliant,
       confidenceScore,
       flaggedIssues,
-      metrics: {
-        sentiment: "Highly Positive (0.86)",
-        brandSafety: "Verified Safe (Score: 99/100)",
-      },
       summary: isCompliant
         ? "Post strictly satisfies all agreed deliverables, mentions, and hashtag guidelines. Verified for t-ECDSA escrow release."
         : `Deliverable detected non-compliance: ${flaggedIssues.join("; ")}`,

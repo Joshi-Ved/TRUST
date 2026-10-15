@@ -32,6 +32,8 @@ import {
 import { formatAddress, formatUsdc } from "@/lib/utils";
 import { AnalyticsVisualizer } from "@/components/advertiser/AnalyticsVisualizer";
 import { Navbar } from "@/components/layout/Navbar";
+import { AuditReport } from "@/components/audit/AuditReport";
+import type { AuditReport as Report } from "@/lib/audit/types";
 import { useWallet } from "@/components/web3/WalletProvider";
 import { useOrders } from "@/lib/orders";
 import { approveUsdc, depositToEscrow, errMessage, toOrderIdBytes32, toRawUsdc } from "@/lib/chain";
@@ -68,7 +70,8 @@ export default function AdvertiserPortal() {
 
   // Gen AI Audit state per order
   const [auditingOrders, setAuditingOrders] = useState<Record<string, boolean>>({});
-  const [auditResults, setAuditResults] = useState<Record<string, AuditVerdict>>({});
+  const [auditResults, setAuditResults] = useState<Record<string, Report>>({});
+  const [auditError, setAuditError] = useState<Record<string, string>>({});
 
   const filteredInfluencers = influencers.filter((inf) => {
     const matchesSearch =
@@ -131,26 +134,28 @@ export default function AdvertiserPortal() {
   };
 
   const handleRunAiAudit = async (orderId: string, proofUrl: string) => {
+    const ord = orders.find((o) => o.orderId === orderId);
+    const inf = influencers.find((i) => i.evmAddress.toLowerCase() === ord?.influencerAddress.toLowerCase());
     setAuditingOrders((prev) => ({ ...prev, [orderId]: true }));
+    setAuditError((prev) => ({ ...prev, [orderId]: "" }));
 
     try {
-      const res = await fetch("/api/ai/audit-proof", {
+      const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proofUrl,
-          campaignRequirements: {
-            productName: "TRUST Protocol",
-            requiredHashtags: ["#TRUST", "#CryptoEscrow"],
-            requiredMentions: ["@TRUST_Protocol"],
-          },
+          url: proofUrl,
+          orderId,
+          expectedHandle: inf?.handle,
+          orderCreatedAt: ord?.createdAt,
+          requirements: { hashtags: ["TRUST", "CryptoEscrow"], mentions: ["TRUST_Protocol"] },
         }),
       });
-
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Audit failed");
       setAuditResults((prev) => ({ ...prev, [orderId]: data }));
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setAuditError((prev) => ({ ...prev, [orderId]: err.message }));
     } finally {
       setAuditingOrders((prev) => ({ ...prev, [orderId]: false }));
     }
@@ -159,6 +164,11 @@ export default function AdvertiserPortal() {
   const handleApproveContent = async (orderId: string) => {
     const ord = orders.find((o) => o.orderId === orderId);
     if (!ord) return;
+    const verdict = auditResults[orderId]?.verdict;
+    if (verdict !== "verified") {
+      const why = !verdict ? "No independent audit has been run for this post." : `The independent audit result is "${verdict}".`;
+      if (!window.confirm(`${why} Releasing the escrow payment cannot be undone. Release anyway?`)) return;
+    }
     let signature: string | undefined;
     let nonce = ord.nonce || 1;
 
@@ -393,11 +403,11 @@ export default function AdvertiserPortal() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-bold tracking-wide text-[#017e84] ">
-                MULTIMODAL AUDIT VERIFICATION
+                THIRD-PARTY AUDIT
               </div>
               <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
                 <FileCheck className="h-5 w-5 text-[#017e84]" />
-                Proof-of-Work Verification Suite
+                Orders & Independent Audit
               </h2>
             </div>
           </div>
@@ -448,14 +458,14 @@ export default function AdvertiserPortal() {
                   {isProofReady && (
                     <div className="p-4 bg-white rounded-md border border-gray-200 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-gray-600 ">Live Link Deliverable:</div>
+                        <div className="text-xs text-gray-600 ">Live post submitted by creator:</div>
                         <button
                           onClick={() => handleRunAiAudit(order.orderId, liveUrl)}
                           disabled={isAuditing}
                           className="px-3 py-1.5 rounded-md bg-[#017e84]/10 border border-[#017e84]/40 text-[#017e84] text-xs  flex items-center gap-1.5 hover:bg-[#017e84]/10 transition-all shadow-sm"
                         >
                           <Radar className={`h-3.5 w-3.5 ${isAuditing ? "animate-spin" : ""}`} />
-                          {isAuditing ? "Scanning with AI Radar..." : "Scan & Audit Content"}
+                          {isAuditing ? "Crawling post…" : auditVerdict ? "Re-run independent audit" : "Run independent audit"}
                         </button>
                       </div>
 
@@ -469,32 +479,10 @@ export default function AdvertiserPortal() {
                         <ExternalLink className="h-3 w-3 shrink-0" />
                       </a>
 
-                      {auditVerdict && (
-                        <div
-                          className={`p-3.5 rounded-md border text-xs space-y-1.5  ${
-                            auditVerdict.isCompliant
-                              ? "bg-[#714b67]/5 border-[#714b67]/40 text-[#714b67]"
-                              : "bg-red-50 border-red-300 text-red-600"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-semibold">
-                            <span className="flex items-center gap-1.5">
-                              {auditVerdict.isCompliant ? (
-                                <CheckCircle2 className="h-4 w-4 text-[#714b67]" />
-                              ) : (
-                                <AlertTriangle className="h-4 w-4 text-red-600" />
-                              )}
-                              RADAR SCAN: {auditVerdict.isCompliant ? "100% COMPLIANT" : "FLAGGED ISSUES"}
-                            </span>
-                            <span className="text-[11px] text-gray-600 tabular-nums">
-                              {auditVerdict.confidenceScore}% Confidence
-                            </span>
-                          </div>
-                          <p className="text-gray-700 text-[11px] leading-relaxed font-sans">
-                            {auditVerdict.summary}
-                          </p>
-                        </div>
+                      {auditError[order.orderId] && (
+                        <div className="text-xs text-red-600">{auditError[order.orderId]}</div>
                       )}
+                      {auditVerdict && <AuditReport report={auditVerdict} compact />}
                     </div>
                   )}
 
@@ -505,12 +493,12 @@ export default function AdvertiserPortal() {
                         className="px-5 py-2.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] text-white font-extrabold text-xs transition-all shadow-sm flex items-center gap-2 hover:brightness-110"
                       >
                         <Sparkles className="h-4 w-4" />
-                        Approve & Emit t-ECDSA Release
+                        Approve & release payment
                       </button>
                     )}
                     {isApproved && (
                       <div className="text-xs text-[#714b67]  flex items-center gap-2 font-semibold">
-                        <CheckCircle2 className="h-4 w-4" /> t-ECDSA Cryptographic Release Emitted
+                        <CheckCircle2 className="h-4 w-4" /> Release signed. Creator can claim
                       </div>
                     )}
                   </div>

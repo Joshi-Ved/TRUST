@@ -10,6 +10,7 @@ const NAV = [
   { href: "/", label: "Overview" },
   { href: "/advertiser", label: "Advertiser" },
   { href: "/influencer", label: "Creator" },
+  { href: "/audit", label: "Audit" },
 ];
 
 export function Navbar() {

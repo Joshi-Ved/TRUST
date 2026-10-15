@@ -193,7 +193,7 @@ export default function InfluencerPortal() {
             </div>
             <div className="h-10 w-px bg-gray-100" />
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">SETTLEMENT GUARANTEE</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">PAYMENT PROTECTION</div>
               <div className="text-2xl font-extrabold text-[#017e84] tracking-tight mt-0.5">
                 t-ECDSA <span className="text-xs text-gray-500 font-sans">ICP</span>
               </div>
@@ -210,7 +210,7 @@ export default function InfluencerPortal() {
               </div>
               <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
                 <Kanban className="h-5 w-5 text-[#017e84]" />
-                Active Deliverables Kanban
+                Your Campaigns
               </h2>
             </div>
           </div>
@@ -219,7 +219,7 @@ export default function InfluencerPortal() {
             {/* Column 1: Escrow Secured */}
             <div className="space-y-3">
               <div className="flex items-center justify-between px-2 text-xs ">
-                <span className="text-[#714b67] font-bold tracking-wide">1. ESCROW SECURED</span>
+                <span className="text-[#714b67] font-bold tracking-wide">1. FUNDED</span>
                 <span className="px-2 py-0.5 rounded-full bg-[#714b67]/10 border border-[#714b67]/40 text-[#714b67] text-[11px] font-bold">
                   {paymentVerifiedOrders.length}
                 </span>
@@ -321,7 +321,7 @@ export default function InfluencerPortal() {
                       </div>
 
                       <div className="text-[11px] text-gray-600 space-y-1">
-                        <div>Proof URL Submitted:</div>
+                        <div>Post submitted:</div>
                         <a
                           href={(ord.status as any).liveUrl}
                           target="_blank"
@@ -334,7 +334,7 @@ export default function InfluencerPortal() {
                       </div>
 
                       <div className="p-2 rounded-lg bg-white border border-gray-100 text-[10px] text-gray-600 flex items-center gap-1.5 ">
-                        <Clock className="h-3 w-3 text-amber-700" /> Awaiting Brand t-ECDSA Sign-Off
+                        <Clock className="h-3 w-3 text-amber-700" /> Awaiting advertiser approval
                       </div>
                     </div>
                   </ThreeDCard>
@@ -367,19 +367,19 @@ export default function InfluencerPortal() {
                         <div className="text-[11px] text-gray-600 leading-relaxed ">
                           {isSettled
                             ? "USDC transferred into your wallet on Ethereum."
-                            : "t-ECDSA signature authorized by ICP Canister!"}
+                            : "Advertiser approved. You can claim your payment now."}
                         </div>
 
                         {isSettled ? (
                           <div className="p-2.5 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 text-xs text-[#714b67]  font-bold flex items-center justify-center gap-1.5">
-                            <CheckCircle className="h-4 w-4" /> SETTLED ON-CHAIN
+                            <CheckCircle className="h-4 w-4" /> PAID ON-CHAIN
                           </div>
                         ) : (
                           <button
                             onClick={() => handleClaimSettlement(ord.orderId)}
                             className="w-full py-3 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:brightness-110 text-white text-xs font-extrabold transition-all shadow-sm flex items-center justify-center gap-2"
                           >
-                            <Wallet className="h-4 w-4" /> Claim USDC Settlement
+                            <Wallet className="h-4 w-4" /> Claim USDC payment
                           </button>
                         )}
                       </div>
@@ -392,7 +392,7 @@ export default function InfluencerPortal() {
         </div>
       </main>
 
-      {/* Proof-of-Work Submission Drawer with Laser Beam Border */}
+      {/* Submit your post Drawer with Laser Beam Border */}
       {isSubmitOpen && (
         <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
           <div className="w-full max-w-lg">
@@ -401,7 +401,7 @@ export default function InfluencerPortal() {
                 <div className="flex items-center justify-between border-b border-gray-200 pb-4">
                   <div className="flex items-center gap-2">
                     <Send className="h-5 w-5 text-[#017e84]" />
-                    <h3 className="font-extrabold text-base text-gray-900">Proof-of-Work Submission</h3>
+                    <h3 className="font-extrabold text-base text-gray-900">Submit your post</h3>
                   </div>
                   <button
                     type="button"
@@ -411,6 +411,11 @@ export default function InfluencerPortal() {
                     ✕
                   </button>
                 </div>
+
+                <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
+                  The advertiser will have TRUST's crawler independently read this post: its public view and like counts, who posted it,
+                  when, and whether it includes the required hashtags and mentions. Posts reused from before the order was funded are flagged.
+                </p>
 
                 <div className="space-y-4">
                   <div>

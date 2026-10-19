@@ -54,7 +54,8 @@ export async function syncMetricsToCanister(
       return { success: false, error: result.Err };
     }
   } catch (err: any) {
-    console.warn(`[ICP Sync] Outcall simulation notice: ${err?.message || err}`);
-    return { success: true }; // Graceful simulation fallback
+    const error = err?.message || String(err);
+    console.warn(`[ICP Sync] Canister call failed: ${error}`);
+    return { success: false, error };
   }
 }

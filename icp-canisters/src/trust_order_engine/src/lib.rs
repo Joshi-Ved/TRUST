@@ -4,9 +4,11 @@ use ic_cdk::api::management_canister::http_request::{
     TransformArgs, TransformContext,
 };
 use ic_cdk::api::management_canister::ecdsa::{
-    sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgument,
+    ecdsa_public_key, sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgument,
+    SignWithEcdsaArgument,
 };
-use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
+use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
+use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::cell::RefCell;
@@ -15,22 +17,61 @@ use std::collections::HashMap;
 mod types;
 use types::*;
 
+#[derive(CandidType, Serialize, Deserialize)]
+struct StableState {
+    orders: HashMap<String, Order>,
+    influencers: HashMap<String, InfluencerProfile>,
+    nonce_counter: u64,
+    evm_rpc_url: String,
+    key_name: String,
+    admin: Principal,
+}
+
 thread_local! {
     static ORDERS: RefCell<HashMap<String, Order>> = RefCell::new(HashMap::new());
     static INFLUENCERS: RefCell<HashMap<String, InfluencerProfile>> = RefCell::new(HashMap::new());
     static NONCE_COUNTER: RefCell<u64> = RefCell::new(1);
     static EVM_RPC_URL: RefCell<String> = RefCell::new("https://rpc.ankr.com/eth_sepolia".to_string());
     static KEY_NAME: RefCell<String> = RefCell::new("dfx_test_key".to_string());
+    static ADMIN: RefCell<Principal> = RefCell::new(Principal::anonymous());
 }
 
 #[init]
 fn init() {
+    ADMIN.with(|a| *a.borrow_mut() = ic_cdk::caller());
     seed_influencer_profiles();
+}
+
+#[pre_upgrade]
+fn pre_upgrade() {
+    let state = StableState {
+        orders: ORDERS.with(|o| o.borrow().clone()),
+        influencers: INFLUENCERS.with(|i| i.borrow().clone()),
+        nonce_counter: NONCE_COUNTER.with(|n| *n.borrow()),
+        evm_rpc_url: EVM_RPC_URL.with(|r| r.borrow().clone()),
+        key_name: KEY_NAME.with(|k| k.borrow().clone()),
+        admin: ADMIN.with(|a| *a.borrow()),
+    };
+    if let Err(e) = ic_cdk::storage::stable_save((state,)) {
+        ic_cdk::trap(&format!("Failed to save state to stable memory: {:?}", e));
+    }
 }
 
 #[post_upgrade]
 fn post_upgrade() {
-    seed_influencer_profiles();
+    match ic_cdk::storage::stable_restore::<(StableState,)>() {
+        Ok((state,)) => {
+            ORDERS.with(|o| *o.borrow_mut() = state.orders);
+            INFLUENCERS.with(|i| *i.borrow_mut() = state.influencers);
+            NONCE_COUNTER.with(|n| *n.borrow_mut() = state.nonce_counter);
+            EVM_RPC_URL.with(|r| *r.borrow_mut() = state.evm_rpc_url);
+            KEY_NAME.with(|k| *k.borrow_mut() = state.key_name);
+            ADMIN.with(|a| *a.borrow_mut() = state.admin);
+        }
+        Err(_) => {
+            seed_influencer_profiles();
+        }
+    }
 }
 
 fn seed_influencer_profiles() {
@@ -68,6 +109,16 @@ fn seed_influencer_profiles() {
                     engagement_rate_bps: 810, // 8.1%
                     bot_score_pct: 4,
                 },
+                InfluencerProfile {
+                    principal: Principal::anonymous(),
+                    evm_address: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65".to_string(),
+                    handle: "@zk_lens".to_string(),
+                    platform: "Instagram".to_string(),
+                    followers: 89_000,
+                    avg_views: 32_000,
+                    engagement_rate_bps: 510, // 5.1%
+                    bot_score_pct: 2,
+                },
             ];
 
             for p in sample_profiles {
@@ -78,33 +129,36 @@ fn seed_influencer_profiles() {
 }
 
 // -----------------------------------------------------------------------------
-// Core Order Lifecycle Methods
+// State Machine Updates
 // -----------------------------------------------------------------------------
 
 #[update]
 #[candid_method(update)]
 pub fn initiate_order(args: CreateOrderArgs) -> Result<Order, String> {
     if args.order_id.trim().is_empty() {
-        return Err("Order ID cannot be empty".to_string());
+        return Err("order_id cannot be empty".to_string());
     }
+    if args.amount_usdc_raw == 0 {
+        return Err("Deposit amount must be > 0".to_string());
+    }
+
+    let created_at = ic_cdk::api::time();
+    let order = Order {
+        order_id: args.order_id.clone(),
+        evm_tx_hash: args.evm_tx_hash,
+        advertiser_address: args.advertiser_address.to_lowercase(),
+        influencer_address: args.influencer_address.to_lowercase(),
+        amount_usdc_raw: args.amount_usdc_raw,
+        status: OrderStatus::Created,
+        created_at,
+        nonce: 0,
+    };
 
     ORDERS.with(|orders| {
         let mut map = orders.borrow_mut();
         if map.contains_key(&args.order_id) {
-            return Err("Order ID already exists".to_string());
+            return Err("Order ID already registered".to_string());
         }
-
-        let order = Order {
-            order_id: args.order_id.clone(),
-            evm_tx_hash: args.evm_tx_hash,
-            advertiser_address: args.advertiser_address.to_lowercase(),
-            influencer_address: args.influencer_address.to_lowercase(),
-            amount_usdc_raw: args.amount_usdc_raw,
-            status: OrderStatus::Created,
-            created_at: ic_cdk::api::time(),
-            nonce: 0,
-        };
-
         map.insert(args.order_id, order.clone());
         Ok(order)
     })
@@ -118,49 +172,62 @@ pub async fn verify_payment(order_id: String) -> Result<Order, String> {
     })?;
 
     if order.status != OrderStatus::Created {
-        return Err("Order is not in Created status".to_string());
+        return Ok(order);
+    }
+
+    if order.evm_tx_hash.trim().is_empty() {
+        return Err("No EVM transaction hash associated with order".to_string());
     }
 
     let rpc_url = EVM_RPC_URL.with(|url| url.borrow().clone());
-    let payload = serde_json::json!({
+
+    // Cycle budgeting validation
+    let cycles_needed: u128 = 25_000_000_000;
+    if ic_cdk::api::canister_balance128() < cycles_needed {
+        return Err("Canister cycle reserve below threshold for outbound HTTP RPC".to_string());
+    }
+
+    let json_payload = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "eth_getTransactionReceipt",
         "params": [order.evm_tx_hash],
         "id": 1
     });
 
-    let body_bytes = serde_json::to_vec(&payload).map_err(|e| e.to_string())?;
+    let body = serde_json::to_vec(&json_payload).map_err(|e| e.to_string())?;
 
     let request_headers = vec![
         HttpHeader {
             name: "Content-Type".to_string(),
             value: "application/json".to_string(),
         },
+        HttpHeader {
+            name: "User-Agent".to_string(),
+            value: "TRUST-Protocol-Canister/1.0".to_string(),
+        },
     ];
 
     let request = CanisterHttpRequestArgument {
         url: rpc_url,
         method: HttpMethod::POST,
-        body: Some(body_bytes),
+        body: Some(body),
         max_response_bytes: Some(4096),
         transform: Some(TransformContext::from_name(
             "transform_http_response".to_string(),
-            serde_json::to_vec(&serde_json::Value::Null).unwrap_or_default(),
+            vec![],
         )),
         headers: request_headers,
     };
 
-    // Make the HTTP outcall via the Management Canister (with cycle payment)
-    let cycles: u128 = 25_000_000_000;
-    match http_request(request, cycles).await {
+    match http_request(request, cycles_needed).await {
         Ok((response,)) => {
-            if response.status == 200u64 {
+            if response.status == candid::Nat::from(200u64) {
                 let json_res: serde_json::Value =
                     serde_json::from_slice(&response.body).map_err(|e| format!("Invalid JSON response: {}", e))?;
 
                 let result = &json_res["result"];
                 if result.is_null() {
-                    return Err("Transaction receipt not found or not yet mined".to_string());
+                    return Err("Transaction receipt not found or not yet mined on EVM".to_string());
                 }
 
                 let status_hex = result["status"].as_str().unwrap_or("0x0");
@@ -171,22 +238,13 @@ pub async fn verify_payment(order_id: String) -> Result<Order, String> {
                     });
                     Ok(order)
                 } else {
-                    Err("Transaction status indicates failure (reverted on EVM)".to_string())
+                    Err("Transaction status indicates reverted execution on EVM".to_string())
                 }
             } else {
-                Err(format!("EVM RPC returned HTTP status {}", response.status))
+                Err(format!("EVM RPC node returned HTTP error {}", response.status))
             }
         }
         Err((code, msg)) => {
-            // For local simulation or when cycles/RPC mock is used
-            # [cfg(test)]
-            {
-                order.status = OrderStatus::PaymentVerified;
-                ORDERS.with(|orders| {
-                    orders.borrow_mut().insert(order.order_id.clone(), order.clone());
-                });
-                return Ok(order);
-            }
             Err(format!("HTTP outcall failed (code {:?}): {}", code, msg))
         }
     }
@@ -258,12 +316,16 @@ pub async fn approve_and_release(
     chain_id: u64,
     verifying_contract: String,
 ) -> Result<SettlementSignatureResponse, String> {
+    let caller = ic_cdk::caller();
+    let is_admin = ADMIN.with(|a| *a.borrow() == caller);
+
     let mut order = ORDERS.with(|orders| {
         orders.borrow().get(&order_id).cloned().ok_or_else(|| "Order not found".to_string())
     })?;
 
-    if order.advertiser_address.to_lowercase() != advertiser_address.to_lowercase() {
-        return Err("Only the campaign advertiser can approve content".to_string());
+    // Access control: only the campaign advertiser or canister admin may approve
+    if !is_admin && order.advertiser_address.to_lowercase() != advertiser_address.to_lowercase() {
+        return Err("Only the campaign advertiser or admin can approve content".to_string());
     }
 
     match order.status {
@@ -295,6 +357,9 @@ pub async fn approve_and_release(
     // Parse influencer address into 20 bytes
     let clean_addr = order.influencer_address.trim_start_matches("0x");
     let addr_bytes = hex::decode(clean_addr).map_err(|_| "Invalid influencer address hex".to_string())?;
+    if addr_bytes.len() != 20 {
+        return Err("Influencer address must be 20 bytes".to_string());
+    }
     let mut influencer_padded = [0u8; 32];
     influencer_padded[12..32].copy_from_slice(&addr_bytes);
 
@@ -317,6 +382,9 @@ pub async fn approve_and_release(
 
     let clean_contract = verifying_contract.trim_start_matches("0x");
     let contract_bytes = hex::decode(clean_contract).map_err(|_| "Invalid verifying contract hex".to_string())?;
+    if contract_bytes.len() != 20 {
+        return Err("Verifying contract must be 20 bytes".to_string());
+    }
     let mut contract_padded = [0u8; 32];
     contract_padded[12..32].copy_from_slice(&contract_bytes);
 
@@ -336,21 +404,20 @@ pub async fn approve_and_release(
     let digest = keccak256(&digest_preimage);
 
     // Request t-ECDSA signature from ICP management canister
-    let key_name = KEY_NAME.with(|k| k.borrow().clone());
     let sign_arg = SignWithEcdsaArgument {
         message_hash: digest.to_vec(),
-        derivation_path: vec![b"trust_escrow_settlement".to_vec()],
-        key_id: EcdsaKeyId {
-            curve: EcdsaCurve::Secp256k1,
-            name: key_name,
-        },
+        derivation_path: settlement_derivation_path(),
+        key_id: settlement_key_id(),
     };
 
     let (sign_res,) = sign_with_ecdsa(sign_arg)
         .await
         .map_err(|(code, msg)| format!("t-ECDSA sign failed (code {:?}): {}", code, msg))?;
 
-    let signature_hex = format!("0x{}", hex::encode(sign_res.signature));
+    // t-ECDSA returns 64-byte r||s; TrustEscrow.sol (ecrecover) needs r||s||v.
+    let public_key = settlement_public_key().await?;
+    let signature = to_evm_signature(&digest, &sign_res.signature, &public_key)?;
+    let signature_hex = format!("0x{}", hex::encode(signature));
 
     ORDERS.with(|orders| {
         orders.borrow_mut().insert(order.order_id.clone(), order.clone());
@@ -362,6 +429,42 @@ pub async fn approve_and_release(
         amount_usdc_raw: order.amount_usdc_raw,
         nonce: assigned_nonce,
         signature_hex,
+    })
+}
+
+/// Ethereum address of the canister's settlement key. Pass it as ICP_SIGNER_ADDRESS
+/// when deploying TrustEscrow.sol so on-chain verification accepts canister signatures.
+#[update]
+#[candid_method(update)]
+pub async fn get_evm_signer_address() -> Result<String, String> {
+    let public_key = settlement_public_key().await?;
+    evm_address_from_sec1(&public_key)
+}
+
+/// Admin-only: the analytics service pushes refreshed creator metrics.
+#[update]
+#[candid_method(update)]
+pub fn update_influencer_metrics(
+    evm_address: String,
+    followers: u64,
+    engagement_rate_bps: u32,
+    bot_score_pct: u8,
+) -> Result<bool, String> {
+    if !ADMIN.with(|a| *a.borrow() == ic_cdk::caller()) {
+        return Err("Only the canister admin can update metrics".to_string());
+    }
+    if bot_score_pct > 100 {
+        return Err("bot_score_pct must be 0-100".to_string());
+    }
+    INFLUENCERS.with(|infs| {
+        let mut map = infs.borrow_mut();
+        let profile = map
+            .get_mut(&evm_address.to_lowercase())
+            .ok_or_else(|| "Influencer not registered".to_string())?;
+        profile.followers = followers;
+        profile.engagement_rate_bps = engagement_rate_bps;
+        profile.bot_score_pct = bot_score_pct;
+        Ok(true)
     })
 }
 
@@ -400,6 +503,58 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     out
 }
 
+fn settlement_key_id() -> EcdsaKeyId {
+    EcdsaKeyId {
+        curve: EcdsaCurve::Secp256k1,
+        name: KEY_NAME.with(|k| k.borrow().clone()),
+    }
+}
+
+fn settlement_derivation_path() -> Vec<Vec<u8>> {
+    vec![b"trust_escrow_settlement".to_vec()]
+}
+
+async fn settlement_public_key() -> Result<Vec<u8>, String> {
+    let (res,) = ecdsa_public_key(EcdsaPublicKeyArgument {
+        canister_id: None,
+        derivation_path: settlement_derivation_path(),
+        key_id: settlement_key_id(),
+    })
+    .await
+    .map_err(|(code, msg)| format!("t-ECDSA public key fetch failed (code {:?}): {}", code, msg))?;
+    Ok(res.public_key)
+}
+
+/// Converts a 64-byte r||s signature into the 65-byte r||s||v form ecrecover expects,
+/// normalising s to the lower half-order (TrustEscrow rejects high-s signatures).
+fn to_evm_signature(digest: &[u8; 32], sig64: &[u8], public_key_sec1: &[u8]) -> Result<[u8; 65], String> {
+    let mut sig = Signature::from_slice(sig64).map_err(|e| format!("Invalid t-ECDSA signature: {}", e))?;
+    if let Some(normalized) = sig.normalize_s() {
+        sig = normalized;
+    }
+    let expected = VerifyingKey::from_sec1_bytes(public_key_sec1).map_err(|e| format!("Invalid public key: {}", e))?;
+
+    for rid in 0u8..2 {
+        let recovery_id = RecoveryId::from_byte(rid).expect("0 and 1 are valid recovery ids");
+        if let Ok(recovered) = VerifyingKey::recover_from_prehash(digest, &sig, recovery_id) {
+            if recovered == expected {
+                let mut out = [0u8; 65];
+                out[..64].copy_from_slice(&sig.to_bytes());
+                out[64] = 27 + rid;
+                return Ok(out);
+            }
+        }
+    }
+    Err("Could not derive recovery id for t-ECDSA signature".to_string())
+}
+
+fn evm_address_from_sec1(public_key_sec1: &[u8]) -> Result<String, String> {
+    let key = VerifyingKey::from_sec1_bytes(public_key_sec1).map_err(|e| format!("Invalid public key: {}", e))?;
+    let uncompressed = key.to_encoded_point(false);
+    let hash = keccak256(&uncompressed.as_bytes()[1..]);
+    Ok(format!("0x{}", hex::encode(&hash[12..])))
+}
+
 fn u64_to_u256_be(val: u64) -> [u8; 32] {
     let mut buf = [0u8; 32];
     buf[24..32].copy_from_slice(&val.to_be_bytes());
@@ -411,4 +566,60 @@ export_service!();
 #[query(name = "__get_candid_interface_tmp_hack")]
 fn export_candid() -> String {
     __export_service()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn order_args(order_id: &str, amount: u64) -> CreateOrderArgs {
+        CreateOrderArgs {
+            order_id: order_id.to_string(),
+            evm_tx_hash: "0x123".to_string(),
+            advertiser_address: "0x1111111111111111111111111111111111111111".to_string(),
+            influencer_address: "0x2222222222222222222222222222222222222222".to_string(),
+            amount_usdc_raw: amount,
+        }
+    }
+
+    // initiate_order's happy path calls ic_cdk::api::time(), which only exists inside a
+    // canister; these cover the validation that runs before it.
+    #[test]
+    fn test_initiate_order_validation() {
+        assert!(initiate_order(order_args("  ", 1_000_000)).is_err());
+        assert!(initiate_order(order_args("ord_unit_test_1", 0)).is_err());
+    }
+
+    #[test]
+    fn test_evm_signature_recovery() {
+        use k256::ecdsa::SigningKey;
+        let signing_key = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let digest = keccak256(b"settlement digest");
+        let (sig, _) = signing_key.sign_prehash_recoverable(&digest).unwrap();
+        let public_key = signing_key.verifying_key().to_encoded_point(true);
+
+        let evm_sig = to_evm_signature(&digest, &sig.to_bytes(), public_key.as_bytes()).unwrap();
+        let v = evm_sig[64];
+        assert!(v == 27 || v == 28);
+        let recovered = VerifyingKey::recover_from_prehash(
+            &digest,
+            &Signature::from_slice(&evm_sig[..64]).unwrap(),
+            RecoveryId::from_byte(v - 27).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(&recovered, signing_key.verifying_key());
+    }
+
+    #[test]
+    fn test_keccak256_hashing() {
+        let hash = keccak256(b"TRUST_ESCROW");
+        assert_ne!(hash, [0u8; 32]);
+    }
+
+    #[test]
+    fn test_u64_to_u256_be() {
+        let res = u64_to_u256_be(256);
+        assert_eq!(res[30], 1);
+        assert_eq!(res[31], 0);
+    }
 }

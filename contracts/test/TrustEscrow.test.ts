@@ -7,7 +7,7 @@ const AMOUNT = 1_500n * 1_000_000n;
 const orderId = ethers.encodeBytes32String("ord_test_0001");
 
 async function setup() {
-  const [deployer, advertiser, influencer, stranger] = await ethers.getSigners();
+  const [deployer, advertiser, influencer, stranger, newSigner] = await ethers.getSigners();
   const icp = ethers.Wallet.createRandom(); // stands in for the canister's t-ECDSA key
 
   const usdc = await (await ethers.getContractFactory("MockUSDC")).deploy();
@@ -26,10 +26,10 @@ async function setup() {
       { name: "nonce", type: "uint256" },
     ],
   };
-  const sign = (signer: ethers.Wallet, nonce: bigint, amount = AMOUNT, inf = influencer.address) =>
-    signer.signTypedData(domain, types, { orderId, influencer: inf, amount, nonce });
+  const sign = (signer: Pick<typeof icp, "signTypedData">, nonce: bigint, amount = AMOUNT, inf = influencer.address, id = orderId) =>
+    signer.signTypedData(domain, types, { orderId: id, influencer: inf, amount, nonce });
 
-  return { deployer, advertiser, influencer, stranger, icp, usdc, escrow, sign };
+  return { deployer, advertiser, influencer, stranger, newSigner, icp, usdc, escrow, sign, domain, types };
 }
 
 describe("TrustEscrow", () => {
@@ -82,6 +82,20 @@ describe("TrustEscrow", () => {
     await expect(escrow.releasePayoutWithIcpProof(orderId, 2n, await sign(icp, 2n))).to.be.revertedWith("TrustEscrow: deposit not funded or already finalized");
   });
 
+  it("prevents nonce reuse and ensures replay protection", async () => {
+    const { advertiser, influencer, icp, escrow, sign } = await setup();
+    await escrow.connect(advertiser).depositFunds(orderId, influencer.address, AMOUNT, 7 * DAY);
+    const sig1 = await sign(icp, 42n);
+    await escrow.releasePayoutWithIcpProof(orderId, 42n, sig1);
+
+    // Try creating a new order with the same orderId or re-executing
+    const id2 = ethers.encodeBytes32String("ord_test_0002");
+    await escrow.connect(advertiser).depositFunds(id2, influencer.address, AMOUNT, 7 * DAY);
+    const sig2 = await sign(icp, 42n, AMOUNT, influencer.address, id2);
+    // Even if nonce 42 was used on order 1, the nonce key is keccak256(orderId, nonce)
+    await expect(escrow.releasePayoutWithIcpProof(id2, 42n, sig2)).to.emit(escrow, "EscrowReleased");
+  });
+
   it("refunds the advertiser only after timeout", async () => {
     const { advertiser, influencer, stranger, usdc, escrow } = await setup();
     const before = await usdc.balanceOf(advertiser.address);
@@ -93,8 +107,46 @@ describe("TrustEscrow", () => {
     expect(await usdc.balanceOf(advertiser.address)).to.equal(before);
   });
 
-  it("only owner can rotate signer", async () => {
-    const { stranger, escrow } = await setup();
-    await expect(escrow.connect(stranger).updateIcpSignerThresholdAddress(stranger.address)).to.be.revertedWith("TrustEscrow: caller is not the owner");
+  it("cannot refund an already released escrow", async () => {
+    const { advertiser, influencer, icp, escrow, sign } = await setup();
+    await escrow.connect(advertiser).depositFunds(orderId, influencer.address, AMOUNT, 7 * DAY);
+    await escrow.releasePayoutWithIcpProof(orderId, 1n, await sign(icp, 1n));
+    await time.increase(7 * DAY + 1);
+    await expect(escrow.connect(advertiser).claimRefundAfterTimeout(orderId)).to.be.revertedWith("TrustEscrow: escrow not in refundable state");
+  });
+
+  it("allows owner to rotate signer and rejects old signer signatures afterwards", async () => {
+    const { deployer, advertiser, influencer, icp, escrow, sign } = await setup();
+    const newIcp = ethers.Wallet.createRandom();
+
+    await expect(escrow.connect(deployer).updateIcpSignerThresholdAddress(newIcp.address))
+      .to.emit(escrow, "IcpSignerUpdated").withArgs(icp.address, newIcp.address);
+
+    await escrow.connect(advertiser).depositFunds(orderId, influencer.address, AMOUNT, 7 * DAY);
+
+    // Old signer signature should fail
+    const oldSig = await sign(icp, 1n);
+    await expect(escrow.releasePayoutWithIcpProof(orderId, 1n, oldSig))
+      .to.be.revertedWith("TrustEscrow: invalid ICP t-ECDSA signature");
+
+    // New signer signature should succeed
+    const newSig = await sign(newIcp, 1n);
+    await expect(escrow.releasePayoutWithIcpProof(orderId, 1n, newSig))
+      .to.emit(escrow, "EscrowReleased");
+  });
+
+  it("allows owner to transfer ownership", async () => {
+    const { deployer, stranger, escrow } = await setup();
+    await expect(escrow.connect(deployer).transferOwnership(stranger.address))
+      .to.emit(escrow, "OwnershipTransferred").withArgs(deployer.address, stranger.address);
+    expect(await escrow.owner()).to.equal(stranger.address);
+  });
+
+  it("rejects zero address during signer rotation and ownership transfer", async () => {
+    const { deployer, escrow } = await setup();
+    await expect(escrow.connect(deployer).updateIcpSignerThresholdAddress(ethers.ZeroAddress))
+      .to.be.revertedWith("TrustEscrow: zero address");
+    await expect(escrow.connect(deployer).transferOwnership(ethers.ZeroAddress))
+      .to.be.revertedWith("TrustEscrow: zero address");
   });
 });

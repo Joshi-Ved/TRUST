@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { JsonRpcSigner } from "ethers";
-import { connectWallet, errMessage, getUsdcBalance } from "@/lib/chain";
+import { connectWallet, errMessage, getUsdcBalance, getEthereum, restoreWallet } from "@/lib/chain";
 
 interface WalletCtx {
   signer: JsonRpcSigner | null;
@@ -58,20 +58,32 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     refreshBalance();
   }, [refreshBalance]);
 
-  // Reset on account/chain change
+  // Restore an already-authorized session on load, and re-sync on account/chain change
   useEffect(() => {
-    const eth = typeof window !== "undefined" ? (window as any).ethereum : null;
-    if (!eth?.on) return;
-    const reset = () => {
-      setSigner(null);
-      setAddress(null);
-      setUsdcBalance(null);
+    let eth: any;
+    try {
+      eth = getEthereum();
+    } catch {
+      return;
+    }
+    const sync = async () => {
+      try {
+        const s = await restoreWallet();
+        setSigner(s);
+        setAddress(s ? await s.getAddress() : null);
+        if (!s) setUsdcBalance(null);
+      } catch {
+        setSigner(null);
+        setAddress(null);
+      }
     };
-    eth.on("accountsChanged", reset);
-    eth.on("chainChanged", reset);
+    sync();
+    if (!eth?.on) return;
+    eth.on("accountsChanged", sync);
+    eth.on("chainChanged", sync);
     return () => {
-      eth.removeListener?.("accountsChanged", reset);
-      eth.removeListener?.("chainChanged", reset);
+      eth.removeListener?.("accountsChanged", sync);
+      eth.removeListener?.("chainChanged", sync);
     };
   }, []);
 

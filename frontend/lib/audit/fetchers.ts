@@ -11,6 +11,10 @@ const HOSTS: Array<[RegExp, Platform]> = [
   [/^(www\.|vm\.)?tiktok\.com$/, "tiktok"],
 ];
 
+// Simple in-memory rate limiter per domain
+const lastRequestTime: Record<string, number> = {};
+const MIN_REQUEST_INTERVAL_MS = 500; // minimum 500ms between hits to same domain
+
 export function parseTarget(raw: string): { url: URL; platform: Platform } {
   let url: URL;
   try {
@@ -24,10 +28,38 @@ export function parseTarget(raw: string): { url: URL; platform: Platform } {
   return { url, platform: hit[1] };
 }
 
-async function getText(url: string, headers: Record<string, string> = {}): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "en", ...headers }, signal: AbortSignal.timeout(15000), redirect: "follow" });
-  if (!res.ok) throw new Error(`${new URL(url).hostname} responded ${res.status}`);
-  return res.text();
+async function getTextWithRetry(url: string, headers: Record<string, string> = {}, maxRetries = 2): Promise<string> {
+  const host = new URL(url).hostname;
+  const now = Date.now();
+  const last = lastRequestTime[host] || 0;
+  if (now - last < MIN_REQUEST_INTERVAL_MS) {
+    await new Promise((r) => setTimeout(r, MIN_REQUEST_INTERVAL_MS - (now - last)));
+  }
+  lastRequestTime[host] = Date.now();
+
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA, "Accept-Language": "en", ...headers },
+        signal: AbortSignal.timeout(12000),
+        redirect: "follow",
+      });
+      if (res.status === 429) {
+        // Rate limited, wait backoff
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      if (!res.ok) throw new Error(`${host} responded ${res.status}`);
+      return await res.text();
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError || new Error(`Failed to fetch from ${host}`);
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && isFinite(v) ? v : null);
@@ -39,7 +71,7 @@ async function crawlX(url: URL): Promise<Snapshot> {
   const m = url.pathname.match(/^\/([^/]+)\/status(?:es)?\/(\d+)/);
   if (!m) throw new Error("Not a link to a specific post (expected x.com/<user>/status/<id>)");
   const [, user, id] = m;
-  const body = await getText(`https://api.fxtwitter.com/${user}/status/${id}`);
+  const body = await getTextWithRetry(`https://api.fxtwitter.com/${user}/status/${id}`);
   const t = JSON.parse(body)?.tweet;
   if (!t) throw new Error("Post not found (deleted, private or wrong link)");
   return {
@@ -82,14 +114,14 @@ function jsonStr(html: string, key: string): string | null {
 async function crawlYouTube(url: URL): Promise<Snapshot> {
   const id = videoIdOf(url);
   if (!id) throw new Error("Not a link to a specific video");
-  const html = await getText(`https://www.youtube.com/watch?v=${id}`);
+  const html = await getTextWithRetry(`https://www.youtube.com/watch?v=${id}`);
   const views = jsonStr(html, "viewCount");
   if (views === null) throw new Error("Video not found or unavailable");
   const likes = jsonStr(html, "likeCount");
   const publish = jsonStr(html, "publishDate");
   let handle = jsonStr(html, "author");
   try {
-    const o = JSON.parse(await getText(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`));
+    const o = JSON.parse(await getTextWithRetry(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`));
     const h = String(o.author_url || "").match(/@([\w.-]+)/);
     handle = h ? h[1] : o.author_name || handle;
   } catch {}
@@ -111,7 +143,7 @@ async function crawlYouTube(url: URL): Promise<Snapshot> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Instagram / TikTok: no public impression counts. We can still prove the post exists and read its caption.
+// Instagram / TikTok: public page metadata scraper.
 // ---------------------------------------------------------------------------------------------
 function meta(html: string, prop: string): string | null {
   const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']*)["']`, "i"));
@@ -119,7 +151,7 @@ function meta(html: string, prop: string): string | null {
 }
 
 async function crawlGeneric(url: URL, platform: Platform): Promise<Snapshot> {
-  const html = await getText(url.toString());
+  const html = await getTextWithRetry(url.toString());
   const title = meta(html, "og:title");
   const desc = meta(html, "og:description");
   if (!title && !desc) throw new Error("Page is not publicly readable (login wall or removed)");

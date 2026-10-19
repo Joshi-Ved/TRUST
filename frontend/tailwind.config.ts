@@ -11,63 +11,73 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        surface: {
+          50: "#161d2d",
+          100: "#121824",
+          200: "#0e131d",
+          300: "#0a0e16",
+          400: "#06090f",
+        },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "var(--card)",
+          foreground: "var(--card-foreground)",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "var(--popover)",
+          foreground: "var(--popover-foreground)",
         },
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "var(--primary)",
+          foreground: "var(--primary-foreground)",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "var(--secondary)",
+          foreground: "var(--secondary-foreground)",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "var(--accent)",
+          foreground: "var(--accent-foreground)",
         },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
+        border: "var(--border)",
+        input: "var(--input)",
+        ring: "var(--ring)",
         emerald: {
           DEFAULT: "#10b981",
-          500: "#10b981",
           400: "#34d399",
+          500: "#10b981",
           600: "#059669",
         },
         cyan: {
           DEFAULT: "#06b6d4",
-          500: "#06b6d4",
+          300: "#67e8f9",
           400: "#22d3ee",
-        }
+          500: "#06b6d4",
+          600: "#0891b2",
+        },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "0.75rem",
+        md: "0.5rem",
+        sm: "0.375rem",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "sans-serif"],
+        mono: ["var(--font-mono)", "monospace"],
       },
       animation: {
         "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        "shimmer": "shimmer 2s linear infinite",
+        "glow": "glow 3s ease-in-out infinite alternate",
       },
       keyframes: {
-        shimmer: {
-          from: { backgroundPosition: "0 0" },
-          to: { backgroundPosition: "-200% 0" },
+        glow: {
+          "0%": { opacity: "0.4" },
+          "100%": { opacity: "0.9" },
         },
       },
     },

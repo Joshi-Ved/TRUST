@@ -6,51 +6,105 @@ TRUST is a hybrid EVM + Internet Computer (ICP) trustless settlement network des
 
 ```
 TRUST/
-├── contracts/                  # EVM Smart Contracts (Foundry / Hardhat)
+├── contracts/                  # EVM Smart Contracts (Hardhat)
 │   ├── contracts/
 │   │   ├── TrustEscrow.sol     # Production USDC Escrow with t-ECDSA Release & Refund locks
-│   │   └── interfaces/
-│   │       └── IERC20.sol
+│   │   └── MockUSDC.sol        # Testnet ERC20 USDC mock
 │   ├── scripts/
+│   │   └── deploy.ts           # Deployment script (Localhost & Sepolia)
 │   └── test/
-│       └── TrustEscrow.t.sol
+│       └── TrustEscrow.test.ts # Hardhat tests (11 comprehensive test suites)
 ├── icp-canisters/              # ICP Rust Canisters (State Machine & t-ECDSA Signer)
 │   ├── src/
 │   │   └── trust_order_engine/
 │   │       ├── Cargo.toml
 │   │       ├── src/
-│   │       │   ├── lib.rs      # Order FSM, EVM RPC HTTP Outcalls, t-ECDSA signing
+│   │       │   ├── lib.rs      # Order FSM, stable memory upgrades, t-ECDSA signing
 │   │       │   └── types.rs
-│   └── dfx.json
-├── backend/                    # Off-chain indexing, metadata caching & social graph
+│   ├── dfx.json
+│   └── trust_canister.did
+├── backend/                    # Off-chain indexing, persistence & metadata
 │   ├── prisma/
-│   │   └── schema.prisma
+│   │   └── schema.prisma       # PostgreSQL schema (Influencer, Order, AuditReport)
 │   ├── src/
-│   │   ├── index.ts
-│   │   └── routes/
+│   │   ├── index.ts            # Express API service
+│   │   └── routes/             # Orders, influencers, and audit routes
 │   ├── package.json
 │   └── tsconfig.json
-├── frontend/                   # Tier-1 Web3 Next.js App Router Interface
+├── services/
+│   └── analytics/              # Influencer authenticity & anomaly detection service
+│       ├── src/
+│       │   ├── anomalyDetector.ts # Shannon entropy vocabulary & bot detection
+│       │   ├── canisterSync.ts    # Syncs verified metrics to ICP canister
+│       │   └── index.ts           # CLI runner & scheduler
+│       ├── test/
+│       │   └── anomalyDetector.test.ts
+│       ├── package.json
+│       └── tsconfig.json
+├── frontend/                   # Next.js 16 App Router Interface
 │   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx            # High-impact Web3 landing / role selector
-│   │   ├── advertiser/         # Discovery engine, Campaign Drawer, Escrow Modal
-│   │   │   └── page.tsx
-│   │   └── influencer/         # Profile verification, Kanban, PoW Submissions
-│   │       └── page.tsx
+│   │   ├── layout.tsx          # Dark protocol layout & wallet provider
+│   │   ├── page.tsx            # Protocol overview & architectural walkthrough
+│   │   ├── advertiser/         # Discovery engine, escrow vault deposit, dispute & refund
+│   │   ├── influencer/         # Creator Studio, Kanban pipeline, proof submission, claim
+│   │   ├── audit/              # Social post crawler & heuristic audit engine
+│   │   └── api/                # AI draft generation & audit proof endpoints
 │   ├── components/
-│   │   ├── ui/                 # Atomic design tokens (shadcn-inspired)
-│   │   ├── web3/               # Wallet connect, t-ECDSA claim modals, transaction badges
-│   │   ├── advertiser/
-│   │   └── influencer/
+│   │   ├── advertiser/         # AnalyticsVisualizer
+│   │   ├── audit/              # AuditReport certificate
+│   │   ├── layout/             # Protocol Navbar
+│   │   └── ui/                 # ThreeDCard (3D perspective tilt) & LaserBeamBorder
 │   ├── lib/
-│   │   ├── contracts.ts        # Viem/Ethers bindings & ABI definitions
-│   │   ├── icp-agent.ts        # @dfinity/agent actor integration
-│   │   └── utils.ts
+│   │   ├── chain.ts            # Ethers v6 contract bindings (approve, deposit, release, refund)
+│   │   ├── contracts.ts        # ABI definitions
+│   │   ├── icp-agent.ts        # ICP Agent types & state models
+│   │   └── audit/              # Crawler fetchers (X, YouTube, TikTok) & analyzer
 │   ├── styles/
-│   │   └── globals.css         # Dark-mode dominant tokens (#09090b, frosted glass, emerald accents)
+│   │   └── globals.css         # Dark cyberpunk/fintech protocol tokens (#07090e, cyan, emerald)
 │   ├── tailwind.config.ts
-│   ├── package.json
-│   └── tsconfig.json
-└── README.md
+│   └── package.json
+└── summary.md                  # Project status & completed deliverables
 ```
+
+## Quickstart & Local Setup
+
+### Prerequisites
+- Node.js v20+ or v24+
+- npm v10+
+
+### 1. Smart Contracts (EVM)
+```bash
+cd contracts
+npm install
+npm test            # Runs all 11 unit & security tests
+npm run node        # Starts local Hardhat JSON-RPC node on port 8545
+npm run deploy:local # Deploys MockUSDC and TrustEscrow to local network
+```
+
+### 2. Frontend Development Server
+```bash
+cd frontend
+npm install
+npm run dev         # Starts Next.js server on http://localhost:3000
+```
+Visit [http://localhost:3000](http://localhost:3000) to access the landing page, [http://localhost:3000/advertiser](http://localhost:3000/advertiser) for the Advertiser Portal, and [http://localhost:3000/influencer](http://localhost:3000/influencer) for Creator Studio.
+
+### 3. Analytics Service
+```bash
+cd services/analytics
+npm test            # Runs anomaly detection & entropy unit tests
+npm start           # Executes batch creator audit & canister metric sync
+```
+
+### 4. ICP Canister (Optional for local dfx)
+```bash
+cd icp-canisters
+dfx start --background
+dfx deploy
+```
+
+## Security Model
+- **Non-Custodial Escrow**: Funds are locked directly in `TrustEscrow.sol`. Neither advertiser nor influencer can arbitrarily withdraw without satisfying the milestone conditions.
+- **t-ECDSA Cryptographic Gate**: Releases require an EIP-712 signature generated by the ICP Canister's threshold ECDSA key (`sign_with_ecdsa`), preventing single-point-of-failure oracle attacks.
+- **Unilateral 7-Day Timelock**: If content deliverables are unfulfilled, the advertiser can unilaterally reclaim 100% of escrowed USDC after the timeout duration expires.
+- **Independent Scraping Engine**: Post metrics are scraped directly from the host platforms (X, YouTube, etc.) to detect fake impressions, abnormal like-to-view ratios, and hashtag non-compliance.

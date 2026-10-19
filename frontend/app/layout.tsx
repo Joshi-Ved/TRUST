@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TRUST | Smart Escrow for Influencer Marketing",
-  description: "Pay influencers safely: USDC held in an Ethereum escrow and released only when the work is verified.",
+  title: "TRUST | Smart Escrow Protocol for Influencer Marketing",
+  description: "Cryptographic smart escrow protocol: USDC locked in EVM contracts and released via Internet Computer threshold ECDSA signatures upon verified proof of work.",
 };
 
 export default function RootLayout({
@@ -20,9 +20,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} font-sans bg-[#f4f5f7] text-[#212529] min-h-screen antialiased selection:bg-[#714b67]/20`}>
-        <div className="flex flex-col min-h-screen">
+    <html lang="en" className="dark">
+      <body className={`${inter.variable} font-sans bg-[#07090e] text-[#f1f5f9] min-h-screen antialiased selection:bg-cyan-500/30 selection:text-cyan-200`}>
+        <div className="flex flex-col min-h-screen relative z-10">
           <WalletProvider>{children}</WalletProvider>
         </div>
       </body>

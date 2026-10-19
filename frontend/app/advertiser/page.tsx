@@ -22,10 +22,12 @@ import {
   Check,
   Radar,
   Lock,
+  RotateCcw,
+  AlertOctagon,
+  X,
 } from "lucide-react";
 import {
   INITIAL_INFLUENCERS,
-  INITIAL_ORDERS,
   InfluencerProfile,
   Order,
 } from "@/lib/icp-agent";
@@ -36,22 +38,16 @@ import { AuditReport } from "@/components/audit/AuditReport";
 import type { AuditReport as Report } from "@/lib/audit/types";
 import { useWallet } from "@/components/web3/WalletProvider";
 import { useOrders } from "@/lib/orders";
-import { approveUsdc, depositToEscrow, errMessage, toOrderIdBytes32, toRawUsdc } from "@/lib/chain";
+import { approveUsdc, depositToEscrow, claimRefund, errMessage, toOrderIdBytes32, toRawUsdc } from "@/lib/chain";
 import { ThreeDCard } from "@/components/ui/ThreeDCard";
 import { LaserBeamBorder } from "@/components/ui/LaserBeamBorder";
-
-interface AuditVerdict {
-  isCompliant: boolean;
-  confidenceScore: number;
-  flaggedIssues: string[];
-  summary: string;
-}
 
 export default function AdvertiserPortal() {
   const [influencers] = useState<InfluencerProfile[]>(INITIAL_INFLUENCERS);
   const [orders, setOrders] = useOrders();
   const { signer, address, connect, refreshBalance } = useWallet();
   const [txError, setTxError] = useState<string | null>(null);
+  const [txSuccessMessage, setTxSuccessMessage] = useState<string | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string>("");
   const [lastApproveTx, setLastApproveTx] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,6 +63,10 @@ export default function AdvertiserPortal() {
   const [fundStep, setFundStep] = useState<number>(1);
   const [isTransacting, setIsTransacting] = useState(false);
   const [txSuccessHash, setTxSuccessHash] = useState<string | null>(null);
+
+  // Dispute Modal state
+  const [disputeOrderId, setDisputeOrderId] = useState<string | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
 
   // Gen AI Audit state per order
   const [auditingOrders, setAuditingOrders] = useState<Record<string, boolean>>({});
@@ -87,6 +87,7 @@ export default function AdvertiserPortal() {
     setFundStep(1);
     setTxSuccessHash(null);
     setTxError(null);
+    setTxSuccessMessage(null);
   };
 
   const handleNextFundingStep = async () => {
@@ -111,7 +112,7 @@ export default function AdvertiserPortal() {
         setFundStep(3);
         refreshBalance();
       } else if (fundStep === 3) {
-        // Step 3: register the funded order (canister sync is simulated until ICP is deployed)
+        // Step 3: register the funded order
         const newOrder: Order = {
           orderId: pendingOrderId,
           evmTxHash: txSuccessHash || "",
@@ -125,6 +126,7 @@ export default function AdvertiserPortal() {
         };
         setOrders((prev) => [newOrder, ...prev]);
         setIsFundModalOpen(false);
+        setTxSuccessMessage(`Escrow vault created successfully with Order ID: ${pendingOrderId}`);
       }
     } catch (e) {
       setTxError(errMessage(e));
@@ -198,187 +200,226 @@ export default function AdvertiserPortal() {
     );
   };
 
+  const handleClaimRefund = async (orderId: string) => {
+    const ord = orders.find((o) => o.orderId === orderId);
+    if (!ord) return;
+    setTxError(null);
+    try {
+      const s = signer ?? (await connect());
+      if (!s) throw new Error("Connect your wallet first");
+      if (ord.onChain) {
+        const tx = await claimRefund(s, ord.orderId);
+        setTxSuccessMessage(`Timeout refund executed on-chain: ${tx}`);
+      }
+      setOrders((prev) =>
+        prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Disputed", reason: "Refunded via 7-day timelock" } } : o))
+      );
+      refreshBalance();
+    } catch (e) {
+      setTxError(errMessage(e));
+    }
+  };
+
+  const handleConfirmDispute = () => {
+    if (!disputeOrderId) return;
+    setOrders((prev) =>
+      prev.map((o) => (o.orderId === disputeOrderId ? { ...o, status: { type: "Disputed", reason: disputeReason || "Campaign terms violated" } } : o))
+    );
+    setDisputeOrderId(null);
+    setDisputeReason("");
+  };
+
   return (
-    <div className="min-h-screen text-gray-900 flex flex-col">
+    <div className="min-h-screen text-gray-100 flex flex-col bg-[#07090e]">
       <Navbar />
 
-      <main className="max-w-[1440px] w-full mx-auto px-6 py-8 space-y-8 flex-1">
+      <main className="max-w-[1400px] w-full mx-auto px-6 py-10 space-y-10 flex-1">
         {/* Bento Grid: Institutional High-Density Metrics with 3D Tilt */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
+            <div className="glass-panel p-6 rounded-xl border border-white/10 relative overflow-hidden group">
+              <div className="text-[11px] uppercase font-mono tracking-wider text-gray-400 mb-2">
                 ACTIVE ESCROW LIQUIDITY
               </div>
-              <div className="text-3xl font-extrabold text-gray-900  tracking-tight tabular-nums">
-                $148,250.00 <span className="text-sm font-semibold text-[#714b67]">USDC</span>
+              <div className="text-3xl font-extrabold font-mono text-white tracking-tight tabular-nums">
+                $148,250.00 <span className="text-sm font-normal text-cyan-400">USDC</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs ">
-                <span className="px-2 py-0.5 rounded-full bg-[#714b67]/10 text-[#714b67] border border-[#714b67]/40 flex items-center gap-1 font-medium">
+              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
+                <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 font-medium">
                   <ArrowUpRight className="h-3 w-3" /> +14.2% this week
                 </span>
-                <span className="text-gray-500">• 100% On-Chain Protected</span>
+                <span className="text-gray-500">· 100% On-Chain Protected</span>
               </div>
             </div>
           </ThreeDCard>
 
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
-                AI AUDIT & COMPLIANCE VERIFICATION
+            <div className="glass-panel p-6 rounded-xl border border-white/10 relative overflow-hidden group">
+              <div className="text-[11px] uppercase font-mono tracking-wider text-gray-400 mb-2">
+                CRAWLER & COMPLIANCE VERIFICATION
               </div>
-              <div className="text-3xl font-extrabold text-[#017e84]  tracking-tight tabular-nums">
-                98.4% <span className="text-sm font-semibold text-gray-600 font-sans">Accuracy</span>
+              <div className="text-3xl font-extrabold font-mono text-emerald-400 tracking-tight tabular-nums">
+                98.4% <span className="text-sm font-normal text-gray-400">Accuracy</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs ">
-                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 flex items-center gap-1 font-medium">
-                  <Zap className="h-3 w-3" /> Real-time multimodal analysis
+              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-medium">
+                  <Zap className="h-3 w-3" /> Real-time public audit
                 </span>
-                <span className="text-gray-500">• Zero Fraud Incidents</span>
+                <span className="text-gray-500">· Zero Manipulation</span>
               </div>
             </div>
           </ThreeDCard>
 
           <ThreeDCard>
-            <div className="glass-terminal p-6 rounded-lg border border-gray-200 relative overflow-hidden group">
-              <div className="text-[10px] uppercase font-bold tracking-wide text-gray-500 mb-2 ">
+            <div className="glass-panel p-6 rounded-xl border border-white/10 relative overflow-hidden group">
+              <div className="text-[11px] uppercase font-mono tracking-wider text-gray-400 mb-2">
                 PORTFOLIO ROMI MULTIPLIER
               </div>
-              <div className="text-3xl font-extrabold text-[#017e84]  tracking-tight tabular-nums">
-                3.85x <span className="text-sm font-semibold text-gray-600 font-sans">Return</span>
+              <div className="text-3xl font-extrabold font-mono text-cyan-300 tracking-tight tabular-nums">
+                3.85x <span className="text-sm font-normal text-gray-400">Return</span>
               </div>
-              <div className="flex items-center gap-2 mt-4 text-xs ">
-                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 text-[#017e84] border border-[#017e84]/40 flex items-center gap-1 font-medium">
-                  <ShieldCheck className="h-3 w-3" /> t-ECDSA Release Guarantee
+              <div className="flex items-center gap-2 mt-4 text-xs font-mono">
+                <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 font-medium">
+                  <ShieldCheck className="h-3 w-3" /> t-ECDSA Guarantee
                 </span>
-                <span className="text-gray-500">• Verified Settlement</span>
+                <span className="text-gray-500">· Non-Custodial</span>
               </div>
             </div>
           </ThreeDCard>
         </section>
+
+        {txSuccessMessage && (
+          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              {txSuccessMessage}
+            </span>
+            <button onClick={() => setTxSuccessMessage(null)} className="text-emerald-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {txError && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-rose-400" />
+              {txError}
+            </span>
+            <button onClick={() => setTxError(null)} className="text-rose-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* Big Data Analytics Visualizer */}
         <section>
           <AnalyticsVisualizer
             handle={inspectingInfluencer.handle}
-            authenticityScore={inspectingInfluencer.botScorePct <= 3 ? 96 : 89}
+            authenticityScore={100 - inspectingInfluencer.botScorePct * 8}
             botRiskPercent={inspectingInfluencer.botScorePct}
-            romiMultiplier={inspectingInfluencer.botScorePct <= 3 ? 3.8 : 2.9}
+            romiMultiplier={3.8}
           />
         </section>
 
-        {/* Influencer Marketplace Matrix (3D Tilt Cards with Specular Glare) */}
-        <section className="space-y-4">
+        {/* Section: Influencer Marketplace Discovery Engine */}
+        <section className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-wide text-[#714b67] ">
-                CREATOR MARKETPLACE
-              </div>
-              <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                <Users className="h-5 w-5 text-[#714b67]" />
-                Verified Creators & Rate Cards
+              <div className="text-[11px] uppercase font-mono tracking-wider text-cyan-400">DISCOVERY & CONTRACTING</div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Users className="h-5 w-5 text-cyan-400" />
+                Verified Influencer Registry
               </h2>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   type="text"
-                  placeholder="Filter handle or platform..."
+                  placeholder="Filter by creator or platform..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-md text-xs text-gray-800 placeholder-zinc-500 focus:outline-none focus:border-[#714b67]/40  w-56"
+                  className="pl-9 pr-4 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 w-64 font-sans"
                 />
               </div>
 
               <select
-                className="bg-white border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-700 focus:outline-none "
                 value={minFollowers}
                 onChange={(e) => setMinFollowers(Number(e.target.value))}
+                className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-gray-300 focus:outline-none focus:border-cyan-400 font-mono"
               >
-                <option value={0}>All Audiences</option>
-                <option value={100000}>&gt; 100k Reach</option>
-                <option value={200000}>&gt; 200k Reach</option>
+                <option value={0} className="bg-[#0c101a]">Any audience size</option>
+                <option value={100000} className="bg-[#0c101a]">100K+ followers</option>
+                <option value={250000} className="bg-[#0c101a]">250K+ followers</option>
+                <option value={500000} className="bg-[#0c101a]">500K+ followers</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredInfluencers.map((inf) => {
-              const trustScore = 100 - inf.botScorePct;
-              const isSelected = inspectingInfluencer.handle === inf.handle;
+              const trustScore = 100 - inf.botScorePct * 8;
+              const isInspecting = inspectingInfluencer.handle === inf.handle;
 
               return (
-                <ThreeDCard
-                  key={inf.handle}
-                  onClick={() => setInspectingInfluencer(inf)}
-                  className="cursor-pointer"
-                >
+                <ThreeDCard key={inf.handle}>
                   <div
-                    className={`glass-terminal p-5 rounded-lg border relative flex flex-col justify-between h-full ${
-                      isSelected
-                        ? "border-[#714b67]/40 shadow-sm"
-                        : "border-gray-200"
+                    onClick={() => setInspectingInfluencer(inf)}
+                    className={`glass-panel p-5 rounded-xl border transition-all cursor-pointer h-full flex flex-col justify-between ${
+                      isInspecting
+                        ? "border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.15)] bg-cyan-500/[0.03]"
+                        : "border-white/10 hover:border-white/20"
                     }`}
                   >
-                    <div className="space-y-4">
-                      {/* Creator Header */}
+                    <div>
                       <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-md bg-gradient-to-tr from-[#714b67] to-[#017e84] flex items-center justify-center font-extrabold text-white text-sm shadow-sm">
-                            {inf.handle[1].toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-bold text-sm text-gray-900 flex items-center gap-1">
-                              {inf.handle}
-                              <CheckCircle2 className="h-3.5 w-3.5 text-[#714b67] inline" />
-                            </div>
-                            <div className="text-[10px]  text-gray-500">
-                              {formatAddress(inf.evmAddress)}
-                            </div>
-                          </div>
+                        <div>
+                          <h3 className="font-semibold text-white tracking-tight flex items-center gap-1.5">
+                            {inf.handle}
+                            <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" />
+                          </h3>
+                          <span className="text-[11px] font-mono text-gray-400">{inf.platform}</span>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-gray-100 border border-gray-200 text-[10px]  text-gray-600">
-                          {inf.platform}
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 text-gray-400">
+                          {formatAddress(inf.evmAddress)}
                         </span>
                       </div>
 
-                      {/* 3D Trust Radial Metric */}
-                      <div className="p-3 rounded-md bg-gray-50 border border-gray-100 grid grid-cols-2 gap-2  text-xs">
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-white/[0.02] rounded-lg border border-white/[0.06] text-xs font-mono my-4">
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">TRUST INDEX</div>
-                          <div className="text-sm font-bold text-[#714b67] tabular-nums flex items-center gap-1.5 mt-0.5">
-                            <span className="h-2 w-2 rounded-full bg-[#714b67] animate-pulse" />
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500">TRUST SCORE</div>
+                          <div className="text-sm font-bold text-cyan-400 tabular-nums flex items-center gap-1.5 mt-0.5">
+                            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
                             {trustScore}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">ENGAGEMENT</div>
-                          <div className="text-sm font-bold text-gray-900 tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500">ENGAGEMENT</div>
+                          <div className="text-sm font-bold text-white tabular-nums mt-0.5">
                             {(inf.engagementRateBps / 100).toFixed(2)}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">AUDIENCE</div>
-                          <div className="text-xs font-semibold text-gray-700 tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500">AUDIENCE</div>
+                          <div className="text-xs font-semibold text-gray-300 tabular-nums mt-0.5">
                             {inf.followers.toLocaleString()}
                           </div>
                         </div>
                         <div>
-                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">AVG VIEWS</div>
-                          <div className="text-xs font-semibold text-gray-700 tabular-nums mt-0.5">
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500">AVG VIEWS</div>
+                          <div className="text-xs font-semibold text-gray-300 tabular-nums mt-0.5">
                             {inf.avgViews.toLocaleString()}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Action Bar */}
-                    <div className="pt-4 mt-3 border-t border-gray-200 flex items-center justify-between">
-                      <div className=" text-xs">
-                        <span className="text-gray-500 text-[10px] block">RATE</span>
-                        <span className="font-bold text-gray-900 tabular-nums">$1,500 USDC</span>
+                    <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between">
+                      <div className="text-xs font-mono">
+                        <span className="text-gray-500 text-[10px] block">STANDARD RATE</span>
+                        <span className="font-bold text-white tabular-nums">$1,500 USDC</span>
                       </div>
 
                       <button
@@ -386,7 +427,7 @@ export default function AdvertiserPortal() {
                           e.stopPropagation();
                           handleOpenFundModal(inf);
                         }}
-                        className="px-3.5 py-1.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:brightness-110 text-white font-extrabold text-xs transition-all shadow-sm flex items-center gap-1"
+                        className="px-3.5 py-1.5 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all font-mono"
                       >
                         Lock Escrow
                       </button>
@@ -399,15 +440,15 @@ export default function AdvertiserPortal() {
         </section>
 
         {/* Section: Live Deliverables & AI Proof Auditor with Radar Scan */}
-        <section className="space-y-4">
+        <section className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-wide text-[#017e84] ">
-                THIRD-PARTY AUDIT
+              <div className="text-[11px] uppercase font-mono tracking-wider text-emerald-400">
+                ACTIVE ESCROW CONTRACTS
               </div>
-              <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                <FileCheck className="h-5 w-5 text-[#017e84]" />
-                Orders & Independent Audit
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <FileCheck className="h-5 w-5 text-emerald-400" />
+                Campaign Deliverables & Settlement Pipeline
               </h2>
             </div>
           </div>
@@ -416,6 +457,7 @@ export default function AdvertiserPortal() {
             {orders.map((order) => {
               const isProofReady = order.status.type === "ProofSubmitted";
               const isApproved = order.status.type === "Approved";
+              const isDisputed = order.status.type === "Disputed";
               const isAuditing = auditingOrders[order.orderId];
               const auditVerdict = auditResults[order.orderId];
               const liveUrl = (order.status as any).liveUrl;
@@ -423,49 +465,59 @@ export default function AdvertiserPortal() {
               return (
                 <div
                   key={order.orderId}
-                  className="glass-terminal p-6 rounded-lg border border-gray-200 space-y-4"
+                  className="glass-panel p-6 rounded-xl border border-white/10 space-y-4 hover:border-white/20 transition-all"
                 >
                   <div className="flex items-center justify-between">
-                    <span className=" text-xs px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-600">
-                      ORDER ID: <span className="text-gray-900 font-semibold">{order.orderId}</span>
+                    <span className="text-xs font-mono px-2.5 py-1 rounded bg-white/[0.04] border border-white/10 text-gray-400">
+                      ORDER ID: <span className="text-white font-semibold">{order.orderId}</span>
                     </span>
-                    <span className="text-xs  px-2.5 py-0.5 rounded-full bg-[#714b67]/10 text-[#714b67] border border-[#714b67]/40">
+                    <span
+                      className={`text-xs font-mono px-2.5 py-0.5 rounded border uppercase ${
+                        isApproved
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          : isDisputed
+                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          : isProofReady
+                          ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/30"
+                          : "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                      }`}
+                    >
                       {order.status.type}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-md border border-gray-100 text-xs ">
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-white/[0.02] rounded-lg border border-white/[0.06] text-xs font-mono">
                     <div>
                       <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">LOCKED VALUE</div>
-                      <div className="text-sm font-bold text-[#714b67] tabular-nums mt-0.5">
+                      <div className="text-sm font-bold text-cyan-400 tabular-nums mt-0.5">
                         {formatUsdc(order.amountUsdcRaw)}
                       </div>
                     </div>
                     <div>
                       <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">INFLUENCER</div>
-                      <div className="text-xs font-semibold text-gray-700 mt-0.5">
+                      <div className="text-xs font-semibold text-gray-300 mt-0.5">
                         {formatAddress(order.influencerAddress)}
                       </div>
                     </div>
                     <div>
                       <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">EVM RECEIPT</div>
-                      <div className="text-xs text-[#017e84] mt-0.5">
+                      <div className="text-xs text-gray-400 mt-0.5">
                         {formatAddress(order.evmTxHash)}
                       </div>
                     </div>
                   </div>
 
                   {isProofReady && (
-                    <div className="p-4 bg-white rounded-md border border-gray-200 space-y-3">
+                    <div className="p-4 bg-black/40 rounded-lg border border-white/10 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-gray-600 ">Live post submitted by creator:</div>
+                        <div className="text-xs font-mono text-gray-400">Live deliverable proof:</div>
                         <button
                           onClick={() => handleRunAiAudit(order.orderId, liveUrl)}
                           disabled={isAuditing}
-                          className="px-3 py-1.5 rounded-md bg-[#017e84]/10 border border-[#017e84]/40 text-[#017e84] text-xs  flex items-center gap-1.5 hover:bg-[#017e84]/10 transition-all shadow-sm"
+                          className="px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 hover:bg-cyan-500/20 transition-all"
                         >
                           <Radar className={`h-3.5 w-3.5 ${isAuditing ? "animate-spin" : ""}`} />
-                          {isAuditing ? "Crawling post…" : auditVerdict ? "Re-run independent audit" : "Run independent audit"}
+                          {isAuditing ? "Crawling post..." : auditVerdict ? "Re-run crawler" : "Run crawler audit"}
                         </button>
                       </div>
 
@@ -473,32 +525,62 @@ export default function AdvertiserPortal() {
                         href={liveUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-[#017e84] hover:underline flex items-center gap-1.5  break-all"
+                        className="text-xs text-cyan-400 hover:underline flex items-center gap-1.5 font-mono break-all"
                       >
                         {liveUrl}
                         <ExternalLink className="h-3 w-3 shrink-0" />
                       </a>
 
                       {auditError[order.orderId] && (
-                        <div className="text-xs text-red-600">{auditError[order.orderId]}</div>
+                        <div className="text-xs text-rose-400 font-mono">{auditError[order.orderId]}</div>
                       )}
                       {auditVerdict && <AuditReport report={auditVerdict} compact />}
                     </div>
                   )}
 
-                  <div className="pt-2 flex items-center justify-end gap-3">
+                  {isDisputed && (
+                    <div className="p-3 rounded-lg bg-rose-500/[0.08] border border-rose-500/30 text-xs font-mono text-rose-300">
+                      Dispute Reason: {(order.status as any).reason || "Under review"}
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex flex-wrap items-center justify-end gap-3">
+                    {/* Unilateral Timeout Refund Action */}
+                    {!isApproved && (
+                      <button
+                        onClick={() => handleClaimRefund(order.orderId)}
+                        className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-gray-300 hover:text-white hover:bg-white/[0.08] text-xs font-mono flex items-center gap-1.5 transition-all"
+                        title="If content was unfulfilled and 7-day timelock has expired, reclaim 100% of USDC"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 text-gray-400" />
+                        Timelock Refund
+                      </button>
+                    )}
+
+                    {/* Dispute Deliverable Button */}
+                    {isProofReady && !isApproved && !isDisputed && (
+                      <button
+                        onClick={() => setDisputeOrderId(order.orderId)}
+                        className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 text-xs font-mono flex items-center gap-1.5 transition-all"
+                      >
+                        <AlertOctagon className="h-3.5 w-3.5 text-rose-400" />
+                        Dispute Proof
+                      </button>
+                    )}
+
                     {isProofReady && (
                       <button
                         onClick={() => handleApproveContent(order.orderId)}
-                        className="px-5 py-2.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] text-white font-extrabold text-xs transition-all shadow-sm flex items-center gap-2 hover:brightness-110"
+                        className="px-5 py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all font-mono flex items-center gap-2"
                       >
                         <Sparkles className="h-4 w-4" />
-                        Approve & release payment
+                        Approve & Release Payment
                       </button>
                     )}
+
                     {isApproved && (
-                      <div className="text-xs text-[#714b67]  flex items-center gap-2 font-semibold">
-                        <CheckCircle2 className="h-4 w-4" /> Release signed. Creator can claim
+                      <div className="text-xs text-emerald-400 font-mono flex items-center gap-2 font-semibold">
+                        <CheckCircle2 className="h-4 w-4" /> Release voucher signed. Creator can claim on-chain.
                       </div>
                     )}
                   </div>
@@ -509,78 +591,78 @@ export default function AdvertiserPortal() {
         </section>
       </main>
 
-      {/* Hologram Escrow Funding Drawer with Laser Border */}
+      {/* Escrow Deposit Modal */}
       {isFundModalOpen && selectedInfluencer && (
-        <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-lg">
-            <LaserBeamBorder glowColor="emerald">
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 flex items-center justify-center text-[#714b67] shadow-sm">
+            <LaserBeamBorder glowColor="cyan">
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
                       <Lock className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-base text-gray-900">Smart Escrow Vault Deposit</h3>
-                      <div className="text-[10px]  text-gray-500 uppercase tracking-wide">
+                      <h3 className="font-bold text-base text-white">Smart Escrow Vault Deposit</h3>
+                      <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">
                         MULTI-STAGE CRYPTOGRAPHIC LOCK
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={() => setIsFundModalOpen(false)}
-                    className="text-gray-500 hover:text-gray-900 transition-colors"
+                    className="text-gray-400 hover:text-white transition-colors"
                   >
-                    ✕
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 {/* Progress Step Sequencer */}
-                <div className="grid grid-cols-3 gap-2 text-center text-[10px]  font-semibold">
+                <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono font-semibold">
                   <div
-                    className={`p-2 rounded-md border ${
+                    className={`p-2 rounded-lg border ${
                       fundStep >= 1
-                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
-                        : "bg-gray-50 border-gray-200 text-gray-500"
+                        ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                        : "bg-white/[0.02] border-white/10 text-gray-500"
                     }`}
                   >
-                    1. PERMIT USDC
+                    1. AUTHORIZE USDC
                   </div>
                   <div
-                    className={`p-2 rounded-md border ${
+                    className={`p-2 rounded-lg border ${
                       fundStep >= 2
-                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
-                        : "bg-gray-50 border-gray-200 text-gray-500"
+                        ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                        : "bg-white/[0.02] border-white/10 text-gray-500"
                     }`}
                   >
                     2. LOCK ON EVM
                   </div>
                   <div
-                    className={`p-2 rounded-md border ${
+                    className={`p-2 rounded-lg border ${
                       fundStep >= 3
-                        ? "bg-[#714b67]/10 border-[#714b67]/40 text-[#714b67]"
-                        : "bg-gray-50 border-gray-200 text-gray-500"
+                        ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                        : "bg-white/[0.02] border-white/10 text-gray-500"
                     }`}
                   >
                     3. CANISTER SYNC
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4 font-mono">
                   <div>
-                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
                       BENEFICIARY CREATOR
                     </label>
-                    <div className="mt-1 p-3 bg-gray-50 rounded-md border border-gray-200 flex justify-between items-center text-xs">
-                      <span className="font-bold text-gray-900 ">{selectedInfluencer.handle}</span>
-                      <span className=" text-gray-500 text-[11px]">
+                    <div className="mt-1 p-3 bg-white/[0.03] rounded-lg border border-white/10 flex justify-between items-center text-xs">
+                      <span className="font-bold text-white">{selectedInfluencer.handle}</span>
+                      <span className="text-gray-400 text-[11px]">
                         {formatAddress(selectedInfluencer.evmAddress)}
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
                       ESCROW VALUE (USDC)
                     </label>
                     <div className="relative mt-1">
@@ -589,17 +671,17 @@ export default function AdvertiserPortal() {
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
                         disabled={fundStep > 1}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md text-gray-900  text-lg focus:outline-none focus:border-[#714b67] tabular-nums"
+                        className="w-full px-4 py-3 bg-white/[0.04] border border-white/10 rounded-lg text-white font-mono text-lg focus:outline-none focus:border-cyan-400 tabular-nums"
                         placeholder="2400"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2  text-xs text-gray-600 font-bold">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-bold">
                         USDC
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white rounded-md border border-gray-200 text-xs text-gray-600 space-y-1">
-                    <div className="flex items-center gap-1.5 text-[#714b67] font-semibold  text-[11px]">
+                  <div className="p-3 bg-white/[0.02] rounded-lg border border-white/10 text-xs text-gray-400 space-y-1">
+                    <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-[11px]">
                       <Clock className="h-3.5 w-3.5" /> 7-DAY UNILATERAL REFUND TIMELOCK
                     </div>
                     <p className="text-[11px] leading-relaxed">
@@ -609,32 +691,34 @@ export default function AdvertiserPortal() {
                   </div>
 
                   {txSuccessHash && (
-                    <div className="p-3 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 text-[#714b67] text-xs  space-y-1">
+                    <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-1">
                       <div className="font-bold">EVM Deposit Mined Successfully:</div>
-                      <div className="break-all text-[11px] text-[#714b67]">{txSuccessHash}</div>
+                      <div className="break-all text-[11px] text-emerald-400 font-mono">{txSuccessHash}</div>
                     </div>
                   )}
                 </div>
 
                 {txError && (
-                  <div className="text-[11px]  text-red-600 break-words border border-red-300 rounded-lg p-2">{txError}</div>
+                  <div className="text-[11px] font-mono text-rose-400 break-words border border-rose-500/30 rounded-lg p-2 bg-rose-500/10">
+                    {txError}
+                  </div>
                 )}
 
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     onClick={() => setIsFundModalOpen(false)}
-                    className="px-4 py-2 text-xs  text-gray-600 hover:text-gray-900"
+                    className="px-4 py-2 text-xs font-mono text-gray-400 hover:text-white"
                   >
                     Cancel
                   </button>
                   <button
                     disabled={isTransacting}
                     onClick={handleNextFundingStep}
-                    className="px-6 py-2.5 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:from-[#714b67] hover:to-[#5d3c54] text-white font-extrabold text-xs transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                    className="px-6 py-2.5 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 transition-all font-mono flex items-center gap-2"
                   >
                     {isTransacting ? (
                       <>
-                        <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span className="h-3.5 w-3.5 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
                         Executing Stage {fundStep}...
                       </>
                     ) : fundStep === 1 ? (
@@ -648,6 +732,52 @@ export default function AdvertiserPortal() {
                 </div>
               </div>
             </LaserBeamBorder>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Modal */}
+      {disputeOrderId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass-panel p-6 rounded-2xl border border-rose-500/40 space-y-5">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <AlertOctagon className="h-5 w-5 text-rose-400" />
+                Dispute Campaign Deliverable
+              </h3>
+              <button onClick={() => setDisputeOrderId(null)} className="text-gray-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 leading-relaxed font-sans">
+              Raising a dispute flags this order on the settlement engine, halting automatic payouts until manual resolution or timeout.
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-gray-300">Dispute Reason / Defect</label>
+              <textarea
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                placeholder="e.g. Mandatory hashtags missing, audio cut off, or incorrect product URL."
+                className="w-full rounded-lg bg-white/[0.04] border border-white/10 p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-400 h-24 font-sans"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setDisputeOrderId(null)}
+                className="px-4 py-2 text-xs font-mono text-gray-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDispute}
+                className="px-5 py-2 rounded-lg bg-rose-500 text-white font-semibold text-xs tracking-wide hover:bg-rose-400 font-mono"
+              >
+                Confirm Dispute
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -18,6 +18,9 @@ import {
   Cpu,
   Layers,
   ArrowRight,
+  ShieldAlert,
+  X,
+  FileCheck,
 } from "lucide-react";
 import { Order } from "@/lib/icp-agent";
 import { formatAddress, formatUsdc } from "@/lib/utils";
@@ -39,13 +42,19 @@ interface DraftVariation {
 
 export default function InfluencerPortal() {
   const [orders, setOrders] = useOrders();
-  const { signer, connect, refreshBalance } = useWallet();
+  const { signer, address, connect, refreshBalance } = useWallet();
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimSuccess, setClaimSuccess] = useState<string | null>(null);
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [liveUrl, setLiveUrl] = useState("");
   const [platform, setPlatform] = useState("X / Twitter");
   const [claimedOrders, setClaimedOrders] = useState<Record<string, boolean>>({});
+
+  // Creator Profile Verification State
+  const [isVerifiedCreator, setIsVerifiedCreator] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Gen AI Draft Generator State
   const [isAiDraftOpen, setIsAiDraftOpen] = useState(false);
@@ -53,11 +62,27 @@ export default function InfluencerPortal() {
   const [draftVariations, setDraftVariations] = useState<DraftVariation[]>([]);
   const [copiedDraftId, setCopiedDraftId] = useState<string | null>(null);
 
-  // Categorize orders for the Kanban columns
+  // Categorize orders for Kanban columns
   const paymentVerifiedOrders = orders.filter((o) => o.status.type === "PaymentVerified");
   const inProgressOrders = orders.filter((o) => o.status.type === "Accepted");
   const proofSubmittedOrders = orders.filter((o) => o.status.type === "ProofSubmitted");
   const approvedOrders = orders.filter((o) => o.status.type === "Approved" || o.status.type === "Settled");
+
+  const handleVerifyOwnership = async () => {
+    setIsVerifying(true);
+    setVerificationError(null);
+    try {
+      const s = signer ?? (await connect());
+      if (!s) throw new Error("Connect your wallet to verify handle");
+      const message = `TRUST Protocol Creator Handle Verification\nHandle: @satoshi_vibes\nSigner: ${await s.getAddress()}\nTimestamp: ${Date.now()}`;
+      await s.signMessage(message);
+      setIsVerifiedCreator(true);
+    } catch (e: any) {
+      setVerificationError(errMessage(e));
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const handleAcceptOrder = (orderId: string) => {
     setOrders((prev) =>
@@ -98,6 +123,7 @@ export default function InfluencerPortal() {
     const ord = orders.find((o) => o.orderId === orderId);
     if (!ord) return;
     setClaimError(null);
+    setClaimSuccess(null);
 
     let txHash = "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
     if (ord.onChain) {
@@ -107,6 +133,7 @@ export default function InfluencerPortal() {
         if (!s) throw new Error("Connect your wallet first");
         txHash = await releaseWithProof(s, ord.orderId, ord.nonce, ord.signature);
         refreshBalance();
+        setClaimSuccess(`Payout claimed successfully! EVM Tx: ${txHash}`);
       } catch (e) {
         setClaimError(errMessage(e));
         return;
@@ -157,142 +184,179 @@ export default function InfluencerPortal() {
   };
 
   return (
-    <div className="min-h-screen text-gray-900 flex flex-col">
+    <div className="min-h-screen text-gray-100 flex flex-col bg-[#07090e]">
       <Navbar />
 
-      <main className="max-w-[1440px] w-full mx-auto px-6 py-8 space-y-8 flex-1">
-        {/* Creator Identity & 3D HUD Settlement Vault */}
-        <div className="glass-terminal p-6 rounded-lg border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+      <main className="max-w-[1440px] w-full mx-auto px-6 py-10 space-y-10 flex-1">
+        {/* Creator Identity & Settlement Vault Header */}
+        <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
           <div className="flex items-center gap-5">
-            <div className="h-16 w-16 rounded-lg bg-gradient-to-tr from-[#017e84] via-[#714b67] to-[#5d3c54] flex items-center justify-center font-extrabold text-white text-2xl shadow-sm">
+            <div className="h-16 w-16 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-emerald-500/20 to-cyan-500/10 border border-cyan-500/40 flex items-center justify-center font-bold text-cyan-300 text-2xl shadow-[0_0_20px_rgba(6,182,212,0.2)]">
               S
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">@satoshi_vibes</h1>
-                <span className="px-2 py-0.5 rounded-full bg-[#714b67]/10 border border-[#714b67]/40 text-[#714b67] text-xs  font-semibold flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" /> VERIFIED CREATOR
-                </span>
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl font-bold text-white tracking-tight">@satoshi_vibes</h1>
+                {isVerifiedCreator ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-medium flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" /> VERIFIED WALLET SIGNER
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleVerifyOwnership}
+                    disabled={isVerifying}
+                    className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono hover:bg-cyan-500/20 transition-all flex items-center gap-1"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    {isVerifying ? "Signing Challenge..." : "Verify Creator Handle"}
+                  </button>
+                )}
               </div>
-              <div className="text-xs text-gray-600  flex items-center gap-3">
+              <div className="text-xs font-mono text-gray-400 flex flex-wrap items-center gap-3">
                 <span>EVM: 0x7099...79C8</span>
-                <span className="text-gray-400">•</span>
+                <span>·</span>
                 <span>AUDIENCE: 245,000</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-[#714b67] font-bold">TRUST INDEX: 97%</span>
+                <span>·</span>
+                <span className="text-emerald-400 font-semibold">AUTHENTICITY: 97%</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-8 ">
+          <div className="flex items-center gap-8 font-mono">
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">SECURED ESCROW BALANCE</div>
-              <div className="text-2xl font-extrabold text-gray-900 tabular-nums tracking-tight mt-0.5">
-                $4,700.00 <span className="text-sm font-semibold text-[#714b67]">USDC</span>
+              <div className="text-[10px] uppercase tracking-wider text-gray-400">SECURED ESCROW BALANCE</div>
+              <div className="text-2xl font-bold text-white tabular-nums tracking-tight mt-0.5">
+                $4,700.00 <span className="text-sm font-normal text-cyan-400">USDC</span>
               </div>
             </div>
-            <div className="h-10 w-px bg-gray-100" />
+            <div className="h-10 w-px bg-white/10" />
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">PAYMENT PROTECTION</div>
-              <div className="text-2xl font-extrabold text-[#017e84] tracking-tight mt-0.5">
-                t-ECDSA <span className="text-xs text-gray-500 font-sans">ICP</span>
+              <div className="text-[10px] uppercase tracking-wider text-gray-400">PAYMENT PROTECTION</div>
+              <div className="text-2xl font-bold text-emerald-400 tracking-tight mt-0.5">
+                t-ECDSA <span className="text-xs font-normal text-gray-400 font-sans">ICP</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 3D Cyber Kanban Board with Hover Tilt Cards */}
+        {verificationError && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
+            <span>{verificationError}</span>
+            <button onClick={() => setVerificationError(null)} className="text-rose-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {claimSuccess && (
+          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-emerald-400" />
+              {claimSuccess}
+            </span>
+            <button onClick={() => setClaimSuccess(null)} className="text-emerald-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {claimError && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
+            <span>{claimError}</span>
+            <button onClick={() => setClaimError(null)} className="text-rose-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Kanban Board */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-wide text-[#017e84] ">
-                ORDER PIPELINE
+              <div className="text-[11px] uppercase font-mono tracking-wider text-cyan-400">
+                LIFECYCLE PIPELINE
               </div>
-              <h2 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                <Kanban className="h-5 w-5 text-[#017e84]" />
-                Your Campaigns
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Kanban className="h-5 w-5 text-cyan-400" />
+                Active Campaigns & Milestone Escrow
               </h2>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             {/* Column 1: Escrow Secured */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between px-2 text-xs ">
-                <span className="text-[#714b67] font-bold tracking-wide">1. FUNDED</span>
-                <span className="px-2 py-0.5 rounded-full bg-[#714b67]/10 border border-[#714b67]/40 text-[#714b67] text-[11px] font-bold">
+              <div className="flex items-center justify-between px-2 text-xs font-mono">
+                <span className="text-cyan-400 font-semibold tracking-wide">1. FUNDED IN ESCROW</span>
+                <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-bold">
                   {paymentVerifiedOrders.length}
                 </span>
               </div>
-              <div className="space-y-3 min-h-[400px] p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="space-y-3 min-h-[420px] p-3 rounded-xl bg-white/[0.02] border border-white/[0.08]">
                 {paymentVerifiedOrders.map((ord) => (
                   <ThreeDCard key={ord.orderId}>
-                    <div className="glass-terminal p-4 rounded-md border border-gray-200 space-y-3">
-                      <div className="flex justify-between items-start ">
-                        <span className="text-xs text-gray-600 font-semibold">{ord.orderId}</span>
-                        <span className="text-xs text-[#714b67] font-extrabold tabular-nums">
+                    <div className="glass-panel p-4 rounded-lg border border-white/10 space-y-3 hover:border-cyan-500/30 transition-all">
+                      <div className="flex justify-between items-start font-mono">
+                        <span className="text-xs text-gray-300 font-semibold">{ord.orderId}</span>
+                        <span className="text-xs text-cyan-400 font-bold tabular-nums">
                           {formatUsdc(ord.amountUsdcRaw)}
                         </span>
                       </div>
 
-                      <div className="text-[11px] text-gray-600 leading-relaxed">
+                      <div className="text-xs text-gray-400 leading-relaxed font-sans">
                         Funds locked on Ethereum. Accept order to activate deliverable milestone.
                       </div>
 
-                      <div className="p-2 rounded-lg bg-white border border-gray-100 text-[10px]  text-gray-600 flex items-center justify-between">
-                        <span>TIMELOCK:</span>
-                        <span className="text-amber-700 font-bold">06d 18h 42m</span>
+                      <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between">
+                        <button
+                          onClick={() => handleAcceptOrder(ord.orderId)}
+                          className="w-full py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all font-mono"
+                        >
+                          Accept Campaign
+                        </button>
                       </div>
-
-                      <button
-                        onClick={() => handleAcceptOrder(ord.orderId)}
-                        className="w-full py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-xs font-bold text-gray-900 transition-colors"
-                      >
-                        Accept Order & Begin
-                      </button>
                     </div>
                   </ThreeDCard>
                 ))}
               </div>
             </div>
 
-            {/* Column 2: In Production */}
+            {/* Column 2: In Progress */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between px-2 text-xs ">
-                <span className="text-[#017e84] font-bold tracking-wide">2. IN PRODUCTION</span>
-                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 border border-[#017e84]/40 text-[#017e84] text-[11px] font-bold">
+              <div className="flex items-center justify-between px-2 text-xs font-mono">
+                <span className="text-amber-400 font-semibold tracking-wide">2. WORK IN PROGRESS</span>
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold">
                   {inProgressOrders.length}
                 </span>
               </div>
-              <div className="space-y-3 min-h-[400px] p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="space-y-3 min-h-[420px] p-3 rounded-xl bg-white/[0.02] border border-white/[0.08]">
                 {inProgressOrders.map((ord) => (
                   <ThreeDCard key={ord.orderId}>
-                    <div className="glass-terminal p-4 rounded-md border border-[#017e84]/40 space-y-3">
-                      <div className="flex justify-between items-start ">
-                        <span className="text-xs text-gray-600 font-semibold">{ord.orderId}</span>
-                        <span className="text-xs text-[#017e84] font-extrabold tabular-nums">
+                    <div className="glass-panel p-4 rounded-lg border border-white/10 space-y-3 hover:border-amber-500/30 transition-all">
+                      <div className="flex justify-between items-start font-mono">
+                        <span className="text-xs text-gray-300 font-semibold">{ord.orderId}</span>
+                        <span className="text-xs text-amber-400 font-bold tabular-nums">
                           {formatUsdc(ord.amountUsdcRaw)}
                         </span>
                       </div>
 
-                      <div className="text-[11px] text-gray-600 leading-relaxed">
-                        Produce content matching brand brief. Generate copy or submit live URL.
+                      <div className="text-xs text-gray-400 leading-relaxed font-sans">
+                        Order accepted. Create content and submit live URL for crawler audit.
                       </div>
 
-                      <div className="space-y-2 pt-1">
+                      <div className="pt-2 border-t border-white/[0.06] flex flex-col gap-2">
                         <button
                           onClick={() => handleGenerateAiDrafts(ord.orderId)}
-                          className="w-full py-1.5 rounded-md bg-gray-100 border border-gray-200 hover:border-[#017e84]/40 text-xs font-semibold text-gray-800 transition-colors flex items-center justify-center gap-1.5"
+                          className="w-full py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-cyan-300 hover:bg-cyan-500/10 text-xs font-mono flex items-center justify-center gap-1.5 transition-all"
                         >
-                          <Bot className="h-3.5 w-3.5 text-[#017e84]" />
-                          Tone-Match AI Drafts
+                          <Sparkles className="h-3 w-3" />
+                          AI Script Generator
                         </button>
-
                         <button
                           onClick={() => handleOpenSubmitDrawer(ord.orderId)}
-                          className="w-full py-2 rounded-md bg-gradient-to-r from-[#017e84] to-[#5d3c54] hover:brightness-110 text-white text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                          className="w-full py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 transition-all font-mono"
                         >
-                          <Send className="h-3.5 w-3.5" /> Submit Live Proof
+                          Submit Proof
                         </button>
                       </div>
                     </div>
@@ -301,87 +365,92 @@ export default function InfluencerPortal() {
               </div>
             </div>
 
-            {/* Column 3: Under Review */}
+            {/* Column 3: Proof Submitted */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between px-2 text-xs ">
-                <span className="text-amber-700 font-bold tracking-wide">3. UNDER REVIEW</span>
-                <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-700 text-[11px] font-bold">
+              <div className="flex items-center justify-between px-2 text-xs font-mono">
+                <span className="text-purple-400 font-semibold tracking-wide">3. AUDIT PENDING</span>
+                <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[11px] font-bold">
                   {proofSubmittedOrders.length}
                 </span>
               </div>
-              <div className="space-y-3 min-h-[400px] p-2.5 rounded-lg bg-gray-50 border border-gray-200">
-                {proofSubmittedOrders.map((ord) => (
-                  <ThreeDCard key={ord.orderId}>
-                    <div className="glass-terminal p-4 rounded-md border border-gray-200 space-y-3">
-                      <div className="flex justify-between items-start ">
-                        <span className="text-xs text-gray-600 font-semibold">{ord.orderId}</span>
-                        <span className="text-xs text-amber-700 font-extrabold tabular-nums">
-                          {formatUsdc(ord.amountUsdcRaw)}
-                        </span>
-                      </div>
-
-                      <div className="text-[11px] text-gray-600 space-y-1">
-                        <div>Post submitted:</div>
-                        <a
-                          href={(ord.status as any).liveUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#017e84] hover:underline flex items-center gap-1  break-all text-xs"
-                        >
-                          {(ord.status as any).liveUrl}
-                          <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
-                      </div>
-
-                      <div className="p-2 rounded-lg bg-white border border-gray-100 text-[10px] text-gray-600 flex items-center gap-1.5 ">
-                        <Clock className="h-3 w-3 text-amber-700" /> Awaiting advertiser approval
-                      </div>
-                    </div>
-                  </ThreeDCard>
-                ))}
-              </div>
-            </div>
-
-            {/* Column 4: Settlement & Claim with High-Voltage Glow Button */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-2 text-xs ">
-                <span className="text-[#017e84] font-bold tracking-wide">4. SETTLEMENT & CLAIM</span>
-                <span className="px-2 py-0.5 rounded-full bg-[#017e84]/10 border border-[#017e84]/40 text-[#017e84] text-[11px] font-bold">
-                  {approvedOrders.length}
-                </span>
-              </div>
-              <div className="space-y-3 min-h-[400px] p-2.5 rounded-lg bg-gray-50 border border-gray-200">
-                {claimError && <div className="text-[11px]  text-red-600 break-words border border-red-300 rounded-lg p-2">{claimError}</div>}
-                {approvedOrders.map((ord) => {
-                  const isSettled = ord.status.type === "Settled" || claimedOrders[ord.orderId];
+              <div className="space-y-3 min-h-[420px] p-3 rounded-xl bg-white/[0.02] border border-white/[0.08]">
+                {proofSubmittedOrders.map((ord) => {
+                  const proof = ord.status as any;
                   return (
                     <ThreeDCard key={ord.orderId}>
-                      <div className="glass-terminal p-4 rounded-md border border-[#714b67]/40 space-y-3 bg-[#714b67]/5">
-                        <div className="flex justify-between items-start ">
-                          <span className="text-xs text-gray-600 font-semibold">{ord.orderId}</span>
-                          <span className="text-xs text-[#714b67] font-extrabold tabular-nums">
+                      <div className="glass-panel p-4 rounded-lg border border-white/10 space-y-3 hover:border-purple-500/30 transition-all">
+                        <div className="flex justify-between items-start font-mono">
+                          <span className="text-xs text-gray-300 font-semibold">{ord.orderId}</span>
+                          <span className="text-xs text-purple-400 font-bold tabular-nums">
                             {formatUsdc(ord.amountUsdcRaw)}
                           </span>
                         </div>
 
-                        <div className="text-[11px] text-gray-600 leading-relaxed ">
-                          {isSettled
-                            ? "USDC transferred into your wallet on Ethereum."
-                            : "Advertiser approved. You can claim your payment now."}
+                        <div className="p-2.5 rounded bg-black/40 border border-white/10 text-xs font-mono space-y-1">
+                          <div className="text-[10px] text-gray-400 uppercase">SUBMITTED URL</div>
+                          <a
+                            href={proof.liveUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-cyan-400 hover:underline flex items-center gap-1 truncate"
+                          >
+                            {proof.liveUrl}
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
                         </div>
 
-                        {isSettled ? (
-                          <div className="p-2.5 rounded-md bg-[#714b67]/10 border border-[#714b67]/40 text-xs text-[#714b67]  font-bold flex items-center justify-center gap-1.5">
-                            <CheckCircle className="h-4 w-4" /> PAID ON-CHAIN
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleClaimSettlement(ord.orderId)}
-                            className="w-full py-3 rounded-md bg-gradient-to-r from-[#714b67] to-[#5d3c54] hover:brightness-110 text-white text-xs font-extrabold transition-all shadow-sm flex items-center justify-center gap-2"
-                          >
-                            <Wallet className="h-4 w-4" /> Claim USDC payment
-                          </button>
-                        )}
+                        <div className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-purple-400 animate-pulse" />
+                          Under review by advertiser
+                        </div>
+                      </div>
+                    </ThreeDCard>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Column 4: Approved & Settled */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-2 text-xs font-mono">
+                <span className="text-emerald-400 font-semibold tracking-wide">4. SETTLEMENT READY</span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
+                  {approvedOrders.length}
+                </span>
+              </div>
+              <div className="space-y-3 min-h-[420px] p-3 rounded-xl bg-white/[0.02] border border-white/[0.08]">
+                {approvedOrders.map((ord) => {
+                  const isSettled = ord.status.type === "Settled";
+                  return (
+                    <ThreeDCard key={ord.orderId}>
+                      <div className="glass-panel p-4 rounded-lg border border-white/10 space-y-3 hover:border-emerald-500/30 transition-all">
+                        <div className="flex justify-between items-start font-mono">
+                          <span className="text-xs text-gray-300 font-semibold">{ord.orderId}</span>
+                          <span className="text-xs text-emerald-400 font-bold tabular-nums">
+                            {formatUsdc(ord.amountUsdcRaw)}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-gray-300 font-sans">
+                          {isSettled
+                            ? "Payout settled and transferred directly to your EVM wallet."
+                            : "Voucher signed via t-ECDSA. Claim payment on Ethereum."}
+                        </div>
+
+                        <div className="pt-2 border-t border-white/[0.06]">
+                          {isSettled ? (
+                            <div className="text-xs font-mono text-emerald-400 flex items-center gap-1 font-semibold">
+                              <CheckCircle className="h-3.5 w-3.5" /> Payout Settled
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleClaimSettlement(ord.orderId)}
+                              className="w-full py-2 rounded-lg bg-emerald-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-emerald-400 hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all font-mono"
+                            >
+                              Claim Escrow Payout
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </ThreeDCard>
                   );
@@ -392,196 +461,125 @@ export default function InfluencerPortal() {
         </div>
       </main>
 
-      {/* Submit your post Drawer with Laser Beam Border */}
+      {/* Proof Submission Modal */}
       {isSubmitOpen && (
-        <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
-          <div className="w-full max-w-lg">
-            <LaserBeamBorder glowColor="cyan">
-              <form onSubmit={handleSubmitProofOfWork} className="p-6 space-y-5">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-                  <div className="flex items-center gap-2">
-                    <Send className="h-5 w-5 text-[#017e84]" />
-                    <h3 className="font-extrabold text-base text-gray-900">Submit your post</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsSubmitOpen(false)}
-                    className="text-gray-500 hover:text-gray-900"
-                  >
-                    ✕
-                  </button>
-                </div>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass-panel p-6 sm:p-8 rounded-2xl border border-white/10 space-y-6">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <FileCheck className="h-5 w-5 text-cyan-400" />
+                Submit Proof of Deliverable
+              </h3>
+              <button onClick={() => setIsSubmitOpen(false)} className="text-gray-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-                <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
-                  The advertiser will have TRUST's crawler independently read this post: its public view and like counts, who posted it,
-                  when, and whether it includes the required hashtags and mentions. Posts reused from before the order was funded are flagged.
-                </p>
+            <form onSubmit={handleSubmitProofOfWork} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-mono text-gray-300">Social Platform</label>
+                <select
+                  value={platform}
+                  onChange={(e) => setPlatform(e.target.value)}
+                  className="w-full rounded-lg bg-white/[0.04] border border-white/10 p-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                >
+                  <option value="X / Twitter" className="bg-[#0c101a]">X / Twitter</option>
+                  <option value="YouTube" className="bg-[#0c101a]">YouTube</option>
+                  <option value="Instagram" className="bg-[#0c101a]">Instagram</option>
+                  <option value="TikTok" className="bg-[#0c101a]">TikTok</option>
+                </select>
+              </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
-                      TARGET ESCROW CONTRACT
-                    </label>
-                    <div className="mt-1 p-2.5 bg-gray-50 rounded-md border border-gray-200  text-xs text-gray-700">
-                      {selectedOrderId}
-                    </div>
-                  </div>
+              <div className="space-y-2">
+                <label className="text-xs font-mono text-gray-300">Public Live Post URL</label>
+                <input
+                  type="url"
+                  required
+                  value={liveUrl}
+                  onChange={(e) => setLiveUrl(e.target.value)}
+                  placeholder="https://x.com/creator/status/1234567890"
+                  className="w-full rounded-lg bg-white/[0.04] border border-white/10 p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 font-mono"
+                />
+              </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
-                      PUBLISHED PLATFORM
-                    </label>
-                    <select
-                      value={platform}
-                      onChange={(e) => setPlatform(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-xs text-gray-800 focus:outline-none "
-                    >
-                      <option>X / Twitter</option>
-                      <option>YouTube</option>
-                      <option>TikTok</option>
-                      <option>Instagram</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold tracking-wide text-gray-600 ">
-                      LIVE CONTENT URL
-                    </label>
-                    <input
-                      type="url"
-                      required
-                      placeholder="https://x.com/satoshi_vibes/status/1789201948"
-                      value={liveUrl}
-                      onChange={(e) => setLiveUrl(e.target.value)}
-                      className="w-full mt-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-md text-xs text-gray-800 placeholder-zinc-600 focus:outline-none focus:border-[#017e84] "
-                    />
-                  </div>
-
-                  {liveUrl && (
-                    <div className="p-3.5 bg-white rounded-md border border-gray-200 space-y-2">
-                      <div className="flex items-center justify-between text-[10px]  text-gray-600">
-                        <span>LIVE LINK EMBED METADATA:</span>
-                        <span className="text-[#714b67] flex items-center gap-1 font-bold">
-                          <CheckCircle className="h-3 w-3" /> Validated
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-700 font-sans p-2 rounded bg-gray-50 border border-gray-100">
-                        "Escrow payments on EVM make brand sponsorships 100x safer. No more net-60 day invoice chasing for creators #TRUST #CryptoEscrow"
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsSubmitOpen(false)}
-                    className="px-4 py-2 text-xs  text-gray-600 hover:text-gray-900"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 rounded-md bg-gradient-to-r from-[#017e84] to-[#5d3c54] hover:brightness-110 text-white font-extrabold text-xs transition-all shadow-sm"
-                  >
-                    Transmit for AI Radar Audit
-                  </button>
-                </div>
-              </form>
-            </LaserBeamBorder>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsSubmitOpen(false)}
+                  className="px-4 py-2 text-xs font-mono text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 transition-all font-mono"
+                >
+                  Submit for Audit
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* AI Draft Generator Slide-Over Drawer */}
+      {/* AI Draft Generator Modal */}
       {isAiDraftOpen && (
-        <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-            <LaserBeamBorder glowColor="cyan">
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-                  <div className="flex items-center gap-2.5">
-                    <Bot className="h-5 w-5 text-[#017e84]" />
-                    <h3 className="font-extrabold text-base text-gray-900">Tone-Matched Gen AI Draft Assistant</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsAiDraftOpen(false)}
-                    className="text-gray-500 hover:text-gray-900"
-                  >
-                    ✕
-                  </button>
-                </div>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl glass-panel p-6 sm:p-8 rounded-2xl border border-cyan-500/30 space-y-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-cyan-400" />
+                AI Content Brief & Script Variations
+              </h3>
+              <button onClick={() => setIsAiDraftOpen(false)} className="text-gray-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-                <div className="text-xs text-gray-600">
-                  Generating tailored copy variations matching your historical top-performing posts while strictly
-                  adhering to the sponsor’s brand guidelines.
-                </div>
-
-                {isGeneratingDrafts ? (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-3">
-                    <span className="h-6 w-6 border-2 border-[#017e84] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs  text-gray-600">
-                      Synthesizing creator tone & campaign brief...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {draftVariations.map((v) => {
-                      const fullText = `${v.hook}\n\n${v.body}\n\n${v.hashtags.join(" ")}`;
-                      const isCopied = copiedDraftId === v.id;
-
-                      return (
-                        <div
-                          key={v.id}
-                          className="p-4 rounded-md bg-white border border-gray-200 space-y-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs  font-semibold text-[#017e84]">
-                              {v.label}
-                            </span>
-                            <button
-                              onClick={() => handleCopyDraft(fullText, v.id)}
-                              className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs  text-gray-700 flex items-center gap-1 transition-colors border border-gray-200"
-                            >
-                              {isCopied ? (
-                                <>
-                                  <Check className="h-3 w-3 text-[#714b67]" /> Copied!
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="h-3 w-3" /> Copy Draft
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-                          <div className="text-sm font-bold text-gray-900 font-sans">{v.hook}</div>
-                          <p className="text-xs text-gray-700 whitespace-pre-line leading-relaxed">
-                            {v.body}
-                          </p>
-
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {v.hashtags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="text-[10px]  px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-[#017e84]"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div className="text-[10px] text-gray-500 border-t border-gray-200 pt-2 ">
-                            RATIONALE: {v.toneRationale}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+            {isGeneratingDrafts ? (
+              <div className="py-12 text-center space-y-3 font-mono text-xs text-cyan-400">
+                <div className="h-8 w-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                <div>Generating audience-optimized variations via AI engine...</div>
               </div>
-            </LaserBeamBorder>
+            ) : draftVariations.length === 0 ? (
+              <div className="py-8 text-center text-xs text-gray-400 font-mono">
+                No draft variations generated. Click re-run to generate scripts.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {draftVariations.map((draft) => (
+                  <div key={draft.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                        {draft.label}
+                      </span>
+                      <button
+                        onClick={() => handleCopyDraft(`${draft.hook}\n\n${draft.body}\n\n${draft.hashtags.join(" ")}`, draft.id)}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded bg-white/[0.04] border border-white/10 text-xs font-mono text-gray-300 hover:text-white hover:bg-white/[0.08] transition-all"
+                      >
+                        {copiedDraftId === draft.id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        {copiedDraftId === draft.id ? "Copied" : "Copy Script"}
+                      </button>
+                    </div>
+
+                    <div className="text-xs font-semibold text-white">Hook: "{draft.hook}"</div>
+                    <p className="text-xs text-gray-300 whitespace-pre-line leading-relaxed font-sans">{draft.body}</p>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {draft.hashtags.map((tag) => (
+                        <span key={tag} className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="text-[11px] font-mono text-gray-500 pt-1 border-t border-white/[0.06]">
+                      Strategy: {draft.toneRationale}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

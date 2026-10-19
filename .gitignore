@@ -30,3 +30,5 @@ target/
 .DS_Store
 Thumbs.db
 .data/
+AGENTS.md
+*.log

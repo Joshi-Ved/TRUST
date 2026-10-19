@@ -78,6 +78,8 @@ service : {
   "accept_order" : (text, text) -> (variant { Ok : Order; Err : text });
   "submit_proof" : (SubmitProofArgs, text) -> (variant { Ok : Order; Err : text });
   "approve_and_release" : (text, text, nat64, text) -> (variant { Ok : SettlementSignatureResponse; Err : text });
+  "get_evm_signer_address" : () -> (variant { Ok : text; Err : text });
+  "update_influencer_metrics" : (text, nat64, nat32, nat8) -> (variant { Ok : bool; Err : text });
   "get_order" : (text) -> (opt Order) query;
   "list_orders" : () -> (vec Order) query;
   "list_influencers" : () -> (vec InfluencerProfile) query;

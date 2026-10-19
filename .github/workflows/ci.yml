@@ -1,0 +1,76 @@
+name: TRUST Protocol CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contracts:
+    name: EVM Smart Contracts Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: ./contracts
+        run: npm ci
+      - name: Compile and Test
+        working-directory: ./contracts
+        run: npm test
+
+  frontend:
+    name: Frontend Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+      - name: Run Build
+        working-directory: ./frontend
+        run: npm run build
+      - name: Install contract dependencies for ts-node
+        working-directory: ./contracts
+        run: npm ci
+      - name: Run Crawler Tests
+        run: node -r ./contracts/node_modules/ts-node/register ./frontend/lib/audit/analyze.test.ts
+
+  analytics:
+    name: Analytics Service Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install contract dependencies for ts-node
+        working-directory: ./contracts
+        run: npm ci
+      - name: Run Analytics Tests
+        run: node -r ./contracts/node_modules/ts-node/register ./services/analytics/test/anomalyDetector.test.ts
+
+  backend:
+    name: Backend Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm install
+      - name: Typecheck
+        working-directory: ./backend
+        run: npx tsc --noEmit

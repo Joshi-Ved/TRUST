@@ -1,0 +1,57 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Influencer {
+  id                String   @id @default(uuid())
+  evmAddress        String   @unique
+  handle            String   @unique
+  platform          String
+  followers         BigInt   @default(0)
+  avgViews          BigInt   @default(0)
+  engagementRateBps Int      @default(0)
+  botScorePct       Int      @default(0)
+  isVerified        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  orders            Order[]
+}
+
+model Order {
+  id                String       @id
+  evmTxHash         String?
+  advertiserAddress String
+  influencerAddress String
+  amountUsdcRaw     BigInt
+  status            String       // Created, PaymentVerified, Accepted, ProofSubmitted, Approved, Settled, Disputed
+  liveUrl           String?
+  platform          String?
+  disputeReason     String?
+  signature         String?
+  nonce             BigInt       @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  influencer        Influencer?  @relation(fields: [influencerAddress], references: [evmAddress])
+  auditReports      AuditReport[]
+}
+
+model AuditReport {
+  id                 String   @id
+  orderId            String?
+  url                String
+  reportHash         String   @unique
+  verdict            String   // verified, flagged, partial, unverifiable
+  authenticityScore  Int?
+  summary            String
+  snapshotViews      BigInt?
+  snapshotLikes      BigInt?
+  snapshotReposts    BigInt?
+  snapshotReplies    BigInt?
+  generatedAt        DateTime @default(now())
+  order              Order?   @relation(fields: [orderId], references: [id])
+}

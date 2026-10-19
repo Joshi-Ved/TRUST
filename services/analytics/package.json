@@ -1,0 +1,23 @@
+{
+  "name": "trust-analytics-service",
+  "version": "1.0.0",
+  "description": "TRUST Protocol - Influencer Anomaly Detection & Canister Metric Sync",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "test": "ts-node test/anomalyDetector.test.ts",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@dfinity/agent": "^1.4.0",
+    "@dfinity/candid": "^1.4.0",
+    "@dfinity/principal": "^1.4.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

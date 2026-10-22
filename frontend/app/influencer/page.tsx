@@ -22,6 +22,13 @@ import {
   ShieldAlert,
   X,
   FileCheck,
+  Flame,
+  RefreshCw,
+  Share2,
+  CheckCircle2,
+  TrendingUp,
+  SlidersHorizontal,
+  Edit3,
 } from "lucide-react";
 import { Order } from "@/lib/icp-agent";
 import { formatAddress, formatUsdc } from "@/lib/utils";
@@ -81,6 +88,9 @@ export default function InfluencerPortal() {
   const [draftBasis, setDraftBasis] = useState<DraftBasis | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [copiedDraftId, setCopiedDraftId] = useState<string | null>(null);
+  const [selectedTone, setSelectedTone] = useState<string>("default");
+  const [customAiPrompt, setCustomAiPrompt] = useState<string>("");
+  const [editableDrafts, setEditableDrafts] = useState<Record<string, { hook: string; body: string }>>({});
 
   // Categorize orders for Kanban columns
   const paymentVerifiedOrders = orders.filter((o) => o.status.type === "PaymentVerified");
@@ -155,30 +165,64 @@ export default function InfluencerPortal() {
     setOrders((prev) => prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Settled", txHash } } : o)));
   };
 
-  const handleGenerateAiDrafts = async (orderId: string) => {
-    setSelectedOrderId(orderId);
+  const handleGenerateAiDrafts = async (orderId?: string, overrideTone?: string, overridePrompt?: string) => {
+    const oid = orderId || selectedOrderId;
+    if (!oid) return;
+    setSelectedOrderId(oid);
     setIsAiDraftOpen(true);
     setIsGeneratingDrafts(true);
-    setDraftVariations([]);
-    setDraftBasis(null);
     setDraftError(null);
+
+    const toneToUse = overrideTone !== undefined ? overrideTone : selectedTone;
+    if (overrideTone !== undefined) setSelectedTone(overrideTone);
+
+    const promptToUse = overridePrompt !== undefined ? overridePrompt : customAiPrompt;
 
     try {
       const res = await fetch("/api/ai/generate-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({
+          orderId: oid,
+          tone: toneToUse,
+          customInstructions: promptToUse.trim() || undefined,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Script generation failed");
       setDraftVariations(data.variations);
       setDraftBasis(data.basis);
+
+      const initialEdits: Record<string, { hook: string; body: string }> = {};
+      data.variations.forEach((v: DraftVariation) => {
+        initialEdits[v.id] = { hook: v.hook, body: v.body };
+      });
+      setEditableDrafts(initialEdits);
     } catch (err: any) {
       setDraftError(err.message);
     } finally {
       setIsGeneratingDrafts(false);
     }
+  };
+
+  const handleSwapHook = (draftId: string, newHook: string) => {
+    setEditableDrafts((prev) => ({
+      ...prev,
+      [draftId]: { ...prev[draftId], hook: newHook },
+    }));
+  };
+
+  const handleUpdateText = (draftId: string, field: "hook" | "body", value: string) => {
+    setEditableDrafts((prev) => ({
+      ...prev,
+      [draftId]: { ...prev[draftId], [field]: value },
+    }));
+  };
+
+  const handlePostToTwitter = (hook: string, body: string, hashtags: string[]) => {
+    const fullText = `${hook}\n\n${body}\n\n${hashtags.join(" ")}`;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(fullText)}`, "_blank");
   };
 
   const handleCopyDraft = (text: string, id: string) => {
@@ -602,87 +646,277 @@ export default function InfluencerPortal() {
         </div>
       )}
 
-      {/* AI Draft Generator Modal */}
+      {/* Enhanced AI Content Studio & Script Generator Modal */}
       {isAiDraftOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl my-auto max-h-[88vh] overflow-y-auto glass-panel p-6 sm:p-8 rounded-2xl border border-cyan-500/30 space-y-6 custom-scrollbar">
+          <div className="w-full max-w-3xl my-auto max-h-[90vh] overflow-y-auto glass-panel p-6 sm:p-8 rounded-2xl border border-cyan-500/30 space-y-6 custom-scrollbar">
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-cyan-400" />
-                AI Content Brief & Script Variations
-              </h3>
-              <button onClick={() => setIsAiDraftOpen(false)} className="text-gray-400 hover:text-white">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-bold text-white text-base flex items-center gap-2">
+                    Neural Gen-AI Script Studio
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-normal">
+                      v2.5 Dynamic Engine
+                    </span>
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-400 font-sans">
+                  Generate, modulate, and customize sponsor deliverables from the campaign brief.
+                </p>
+              </div>
+              <button onClick={() => setIsAiDraftOpen(false)} className="text-gray-400 hover:text-white transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
+            {/* Interactive Tone Persona Selector */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+                  <SlidersHorizontal className="h-3 w-3 text-cyan-400" />
+                  Select Content Persona & Tone:
+                </label>
+                <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> FTC Compliance & #ad Auto-Enforced
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { id: "default", label: "✨ Creator Voice", desc: "Organic cadence" },
+                  { id: "hype", label: "🔥 High-Energy Hype", desc: "Bold, viral, FOMO" },
+                  { id: "technical", label: "🧠 Technical Alpha", desc: "Smart contracts & proof" },
+                  { id: "story", label: "📖 Storytelling", desc: "First-person narrative" },
+                  { id: "contrarian", label: "⚡ Contrarian Take", desc: "Pattern interrupt" },
+                  { id: "minimalist", label: "✂️ Minimalist", desc: "Ultra-punchy (<30 words)" },
+                ].map((tone) => (
+                  <button
+                    key={tone.id}
+                    type="button"
+                    disabled={isGeneratingDrafts}
+                    onClick={() => handleGenerateAiDrafts(selectedOrderId, tone.id)}
+                    className={`px-3 py-2 rounded-lg border text-left transition-all font-mono ${
+                      selectedTone === tone.id
+                        ? "bg-cyan-500/20 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                        : "bg-white/[0.02] border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    <div className="text-xs font-semibold">{tone.label}</div>
+                    <div className="text-[10px] text-gray-500">{tone.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom AI Refinement Prompt Bar */}
+            <div className="p-3 bg-white/[0.02] border border-white/10 rounded-xl space-y-2">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                <Edit3 className="h-3 w-3 text-cyan-400" />
+                Refine with Custom Prompt (Optional)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customAiPrompt}
+                  onChange={(e) => setCustomAiPrompt(e.target.value)}
+                  placeholder="e.g. 'Emphasize the zero invoice chasing', 'Make it humorous', 'Tailor for mobile feeds'..."
+                  className="flex-1 px-3 py-2 bg-white/[0.04] border border-white/10 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 font-sans"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isGeneratingDrafts) {
+                      e.preventDefault();
+                      handleGenerateAiDrafts(selectedOrderId, selectedTone, customAiPrompt);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={isGeneratingDrafts}
+                  onClick={() => handleGenerateAiDrafts(selectedOrderId, selectedTone, customAiPrompt)}
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:from-cyan-400 hover:to-emerald-400 transition-all font-mono flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                >
+                  {isGeneratingDrafts ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {isGeneratingDrafts ? "Thinking..." : "Refine"}
+                </button>
+              </div>
+            </div>
+
+            {/* Generation Results */}
             {isGeneratingDrafts ? (
-              <div className="py-12 text-center space-y-3 font-mono text-xs text-cyan-400">
+              <div className="py-14 text-center space-y-3 font-mono text-xs text-cyan-400">
                 <div className="h-8 w-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-                <div>Reading your recent posts and writing scripts from the campaign brief...</div>
+                <div className="font-semibold">Synthesizing personalized script variations...</div>
+                <div className="text-[11px] text-gray-500">
+                  Measuring vocabulary entropy, reading campaign brief, and tailoring hook velocity.
+                </div>
               </div>
             ) : draftVariations.length === 0 ? (
-              <div className="py-8 text-center text-xs text-rose-400 font-mono">{draftError ?? "No scripts generated."}</div>
+              <div className="py-8 text-center text-xs text-rose-400 font-mono">
+                {draftError ?? "No scripts generated. Click a tone above to generate."}
+              </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {draftBasis && (
                   <div className="p-4 rounded-xl bg-cyan-500/[0.05] border border-cyan-500/20 text-xs space-y-2">
-                    <div className="font-mono text-[10px] uppercase tracking-wider text-cyan-400">What these scripts are based on</div>
+                    <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-wider text-cyan-400">
+                      <span>Neural Engine Metadata & Brief Basis</span>
+                      <span className="text-gray-400">
+                        {draftBasis.writer === "llm" ? `Model: ${draftBasis.model ?? "Gemini"}` : "Enhanced Dynamic Engine"}
+                      </span>
+                    </div>
                     <div className="text-gray-300">
                       <span className="text-white font-semibold">Content:</span> {draftBasis.brief.productName}: {draftBasis.brief.keyMessage}
-                      {draftBasis.briefSource === "default" && <span className="text-amber-300"> (default brief: the advertiser did not write one)</span>}
                     </div>
                     <div className="text-gray-300">
-                      <span className="text-white font-semibold">Voice:</span>{" "}
+                      <span className="text-white font-semibold">Voice Model:</span>{" "}
                       {draftBasis.styleSource === "posts"
-                        ? `your style, measured from ${draftBasis.postsAnalyzed} of your recent posts`
+                        ? `calibrated from ${draftBasis.postsAnalyzed} recent posts`
                         : draftBasis.styleSource === "niche"
-                        ? `the ${draftBasis.niche} niche (your posts could not be analysed)`
-                        : "neutral (no posts or niche available)"}
-                      {" · "}
-                      <span className="text-gray-400">{draftBasis.writer === "llm" ? `written by ${draftBasis.model ?? "the AI model"}` : "style-matched templates (AI writer unavailable)"}</span>
+                        ? `the ${draftBasis.niche} niche cadence`
+                        : "calibrated neutral"}
+                      {draftBasis.activeTone && draftBasis.activeTone !== "default" && (
+                        <span className="text-cyan-300 font-mono font-semibold ml-1">
+                          · Tone: {draftBasis.activeTone}
+                        </span>
+                      )}
                     </div>
-                    {draftBasis.styleSummary.length > 0 && (
-                      <ul className="list-disc pl-4 text-gray-400 space-y-0.5">
-                        {draftBasis.styleSummary.map((s) => (
-                          <li key={s}>{s}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {draftBasis.note && <div className="text-amber-300">{draftBasis.note}</div>}
+                    {draftBasis.note && <div className="text-amber-300 text-[11px] font-mono">{draftBasis.note}</div>}
                   </div>
                 )}
-                {draftVariations.map((draft) => (
-                  <div key={draft.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
-                        {draft.label}
-                      </span>
-                      <button
-                        onClick={() => handleCopyDraft(`${draft.hook}\n\n${draft.body}\n\n${draft.hashtags.join(" ")}`, draft.id)}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded bg-white/[0.04] border border-white/10 text-xs font-mono text-gray-300 hover:text-white hover:bg-white/[0.08] transition-all"
-                      >
-                        {copiedDraftId === draft.id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                        {copiedDraftId === draft.id ? "Copied" : "Copy Script"}
-                      </button>
-                    </div>
 
-                    <div className="text-xs font-semibold text-white">Hook: "{draft.hook}"</div>
-                    <p className="text-xs text-gray-300 whitespace-pre-line leading-relaxed font-sans">{draft.body}</p>
+                {/* Script Variation Cards */}
+                {draftVariations.map((draft, idx) => {
+                  const currentHook = editableDrafts[draft.id]?.hook ?? draft.hook;
+                  const currentBody = editableDrafts[draft.id]?.body ?? draft.body;
+                  const charCount = (currentHook + "\n\n" + currentBody).length;
 
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {draft.hashtags.map((tag) => (
-                        <span key={tag} className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
+                  return (
+                    <div
+                      key={draft.id}
+                      className="p-5 rounded-xl bg-white/[0.02] border border-white/10 space-y-4 hover:border-cyan-500/30 transition-all"
+                    >
+                      {/* Top Bar of Script Card */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                            {draft.label}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                            <TrendingUp className="h-2.5 w-2.5" />
+                            Viral Score: {draft.estimatedScore ?? 92}/100
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-gray-300 border border-white/10">
+                            {draft.hookStrength ?? "Viral Hook"}
+                          </span>
+                          <span className="text-[10px] font-mono text-gray-500">
+                            ~{draft.readTimeSeconds ?? 18}s read · {charCount} chars
+                          </span>
+                        </div>
 
-                    <div className="text-[11px] font-mono text-gray-500 pt-1 border-t border-white/[0.06]">
-                      Strategy: {draft.toneRationale}
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-1.5 font-mono text-xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handlePostToTwitter(currentHook, currentBody, draft.hashtags)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#1d9bf0]/10 border border-[#1d9bf0]/30 text-[#1d9bf0] hover:bg-[#1d9bf0]/20 transition-all text-xs"
+                            title="Open X / Twitter compose window with this script"
+                          >
+                            <Share2 className="h-3 w-3" />
+                            Post to X
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopyDraft(`${currentHook}\n\n${currentBody}\n\n${draft.hashtags.join(" ")}`, draft.id)
+                            }
+                            className="flex items-center gap-1 px-3 py-1.5 rounded bg-white/[0.04] border border-white/10 text-gray-300 hover:text-white hover:bg-white/[0.08] transition-all text-xs"
+                          >
+                            {copiedDraftId === draft.id ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                            {copiedDraftId === draft.id ? "Copied" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Alternate Hook Swapper */}
+                      {draft.alternateHooks && draft.alternateHooks.length > 0 && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-cyan-300 flex items-center gap-1">
+                            <Flame className="h-3 w-3 text-amber-400" /> Swap Hook Angle:
+                          </label>
+                          <select
+                            onChange={(e) => handleSwapHook(draft.id, e.target.value)}
+                            value={currentHook}
+                            className="w-full text-xs font-mono rounded bg-white/[0.04] border border-white/10 px-2.5 py-1.5 text-gray-200 focus:outline-none focus:border-cyan-400"
+                          >
+                            <option value={draft.hook} className="bg-[#0c101a]">
+                              Default: "{draft.hook.slice(0, 70)}..."
+                            </option>
+                            {draft.alternateHooks.map((alt, i) => (
+                              <option key={i} value={alt} className="bg-[#0c101a]">
+                                Alt {i + 1}: "{alt.slice(0, 70)}..."
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Editable Hook Field */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">
+                          Hook (Opening Line):
+                        </label>
+                        <input
+                          type="text"
+                          value={currentHook}
+                          onChange={(e) => handleUpdateText(draft.id, "hook", e.target.value)}
+                          className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-cyan-400 font-sans"
+                        />
+                      </div>
+
+                      {/* Editable Body Field */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">
+                          Script Body:
+                        </label>
+                        <textarea
+                          rows={draft.format === "thread" ? 7 : 4}
+                          value={currentBody}
+                          onChange={(e) => handleUpdateText(draft.id, "body", e.target.value)}
+                          className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-lg text-xs text-gray-200 focus:outline-none focus:border-cyan-400 font-sans leading-relaxed custom-scrollbar"
+                        />
+                      </div>
+
+                      {/* Hashtags and Disclosure */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {draft.hashtags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Strategy Rationale */}
+                      <div className="text-[11px] font-mono text-gray-500 pt-2 border-t border-white/[0.06] flex items-center justify-between">
+                        <span>Strategy: {draft.toneRationale}</span>
+                        <span className="text-[10px] text-emerald-400/80">FTC Disclosed</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

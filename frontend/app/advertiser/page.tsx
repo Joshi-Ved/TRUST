@@ -25,11 +25,15 @@ import {
   RotateCcw,
   AlertOctagon,
   X,
+  UserPlus,
+  Trash2,
 } from "lucide-react";
 import {
+  CAMPAIGN_HASHTAG,
   INITIAL_INFLUENCERS,
   InfluencerProfile,
   Order,
+  VerificationResult,
 } from "@/lib/icp-agent";
 import { formatAddress, formatUsdc } from "@/lib/utils";
 import { AnalyticsVisualizer } from "@/components/advertiser/AnalyticsVisualizer";
@@ -38,14 +42,15 @@ import { AuditReport } from "@/components/audit/AuditReport";
 import type { AuditReport as Report } from "@/lib/audit/types";
 import { useWallet } from "@/components/web3/WalletProvider";
 import { useOrders } from "@/lib/orders";
-import { approveUsdc, depositToEscrow, claimRefund, errMessage, toOrderIdBytes32, toRawUsdc } from "@/lib/chain";
+import { useInfluencers } from "@/lib/influencers";
+import { approveUsdc, depositToEscrow, claimRefund, errMessage, toRawUsdc, CHAIN } from "@/lib/chain";
 import { ThreeDCard } from "@/components/ui/ThreeDCard";
 import { LaserBeamBorder } from "@/components/ui/LaserBeamBorder";
 
 export default function AdvertiserPortal() {
-  const [influencers] = useState<InfluencerProfile[]>(INITIAL_INFLUENCERS);
-  const [orders, setOrders] = useOrders();
-  const { signer, address, connect, refreshBalance } = useWallet();
+  const { influencers, remove: removeInfluencer } = useInfluencers();
+  const [orders, setOrders, reloadOrders] = useOrders();
+  const { signer, address, connect, connectDevAccount, requestFaucet, usdcBalance, refreshBalance } = useWallet();
   const [txError, setTxError] = useState<string | null>(null);
   const [txSuccessMessage, setTxSuccessMessage] = useState<string | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string>("");
@@ -60,6 +65,8 @@ export default function AdvertiserPortal() {
   // Multi-step Escrow Funding Modal state
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>("2400");
+  const [targetViews, setTargetViews] = useState<string>("");
+  const [brief, setBrief] = useState({ productName: "", keyMessage: "", link: "", mention: "" });
   const [fundStep, setFundStep] = useState<number>(1);
   const [isTransacting, setIsTransacting] = useState(false);
   const [txSuccessHash, setTxSuccessHash] = useState<string | null>(null);
@@ -73,6 +80,45 @@ export default function AdvertiserPortal() {
   const [auditResults, setAuditResults] = useState<Record<string, Report>>({});
   const [auditError, setAuditError] = useState<Record<string, string>>({});
 
+  // Profile scan + release verification state per order
+  const [verifyingOrders, setVerifyingOrders] = useState<Record<string, boolean>>({});
+  const [verifyError, setVerifyError] = useState<Record<string, string>>({});
+  const [legacyTargets, setLegacyTargets] = useState<Record<string, string>>({});
+  const [reclaimingOrders, setReclaimingOrders] = useState<Record<string, boolean>>({});
+
+  const handleClaimRefund = async (orderId: string) => {
+    const ord = orders.find((o) => o.orderId === orderId);
+    if (!ord) return;
+    setTxError(null);
+    setTxSuccessMessage(null);
+    setReclaimingOrders((prev) => ({ ...prev, [orderId]: true }));
+
+    try {
+      let s = signer;
+      if (!s) {
+        if (CHAIN.chainId === 31337) {
+          s = await connectDevAccount("account-0");
+        } else {
+          s = await connect();
+        }
+      }
+      if (!s) throw new Error("Connect your wallet first");
+
+      if (ord.onChain) {
+        const hash = await claimRefund(s, ord.orderId);
+        setTxSuccessMessage(`Refund claimed from smart contract. EVM Tx: ${hash}`);
+        refreshBalance();
+      }
+      setOrders((prev) =>
+        prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Refunded" } } : o))
+      );
+    } catch (err: any) {
+      setTxError(errMessage(err));
+    } finally {
+      setReclaimingOrders((prev) => ({ ...prev, [orderId]: false }));
+    }
+  };
+
   const filteredInfluencers = influencers.filter((inf) => {
     const matchesSearch =
       inf.handle.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -83,6 +129,7 @@ export default function AdvertiserPortal() {
 
   const handleOpenFundModal = (inf: InfluencerProfile) => {
     setSelectedInfluencer(inf);
+    setTargetViews(String(inf.avgViews || 10_000));
     setIsFundModalOpen(true);
     setFundStep(1);
     setTxSuccessHash(null);
@@ -94,10 +141,28 @@ export default function AdvertiserPortal() {
     setTxError(null);
     setIsTransacting(true);
     try {
-      const s = signer ?? (await connect());
+      let s = signer;
+      if (!s) {
+        if (CHAIN.chainId === 31337) {
+          s = await connectDevAccount("account-0");
+        } else {
+          s = await connect();
+        }
+      }
       if (!s) throw new Error("Connect your wallet first");
+
+      const myAddr = await s.getAddress();
+      if (selectedInfluencer && myAddr.toLowerCase() === selectedInfluencer.evmAddress.toLowerCase()) {
+        throw new Error("Self-dealing prohibited: Your connected wallet is the same as the creator's payout wallet. To deposit as an advertiser on the same device, switch to Account #0.");
+      }
+
       const raw = toRawUsdc(depositAmount || "0");
       if (raw <= BigInt(0)) throw new Error("Enter an amount greater than 0");
+      const target = Math.floor(Number(targetViews));
+      if (!(target > 0)) throw new Error("Enter the number of views the post must reach before payment");
+      if (!brief.productName.trim() || !brief.keyMessage.trim()) {
+        throw new Error("Fill in the campaign brief: what you're promoting and what the post must say");
+      }
 
       if (fundStep === 1) {
         // Step 1: real ERC-20 approve for the escrow contract
@@ -123,6 +188,16 @@ export default function AdvertiserPortal() {
           createdAt: Date.now(),
           nonce: 0,
           onChain: true,
+          campaign: {
+            hashtag: CAMPAIGN_HASHTAG,
+            targetViews: target,
+            brief: {
+              productName: brief.productName.trim(),
+              keyMessage: brief.keyMessage.trim(),
+              link: brief.link.trim() || undefined,
+              mention: brief.mention.trim().replace(/^@/, "") || undefined,
+            },
+          },
         };
         setOrders((prev) => [newOrder, ...prev]);
         setIsFundModalOpen(false);
@@ -150,7 +225,9 @@ export default function AdvertiserPortal() {
           orderId,
           expectedHandle: inf?.handle,
           orderCreatedAt: ord?.createdAt,
-          requirements: { hashtags: ["TRUST", "CryptoEscrow"], mentions: ["TRUST_Protocol"] },
+          targetViews: ord?.campaign?.targetViews,
+          // The campaign hashtag is preferred, not required (see REQUIRE_HASHTAG in /api/verify-release).
+          requirements: {},
         }),
       });
       const data = await res.json();
@@ -163,62 +240,37 @@ export default function AdvertiserPortal() {
     }
   };
 
-  const handleApproveContent = async (orderId: string) => {
-    const ord = orders.find((o) => o.orderId === orderId);
-    if (!ord) return;
-    const verdict = auditResults[orderId]?.verdict;
-    if (verdict !== "verified") {
-      const why = !verdict ? "No independent audit has been run for this post." : `The independent audit result is "${verdict}".`;
-      if (!window.confirm(`${why} Releasing the escrow payment cannot be undone. Release anyway?`)) return;
+  // Payment is released only by the server, after it scans the creator's profile and proves the agreed reach.
+  const handleVerifyAndRelease = async (orderId: string) => {
+    setVerifyingOrders((prev) => ({ ...prev, [orderId]: true }));
+    setVerifyError((prev) => ({ ...prev, [orderId]: "" }));
+    try {
+      const res = await fetch("/api/verify-release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+      if (data.report) setAuditResults((prev) => ({ ...prev, [orderId]: data.report }));
+      await reloadOrders();
+      if (data.verification?.passed) setTxSuccessMessage(`${orderId}: ${data.verification.summary}`);
+    } catch (err: any) {
+      setVerifyError((prev) => ({ ...prev, [orderId]: err.message }));
+    } finally {
+      setVerifyingOrders((prev) => ({ ...prev, [orderId]: false }));
     }
-    let signature: string | undefined;
-    let nonce = ord.nonce || 1;
+  };
 
-    if (ord.onChain) {
-      try {
-        const res = await fetch("/api/dev/icp-sign", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderIdBytes32: toOrderIdBytes32(ord.orderId),
-            influencer: ord.influencerAddress,
-            amountRaw: String(ord.amountUsdcRaw),
-            nonce,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Signer unavailable");
-        signature = data.signature;
-      } catch (e) {
-        setTxError(errMessage(e));
-        return;
-      }
-    }
-
+  // Orders created before campaign terms existed: the advertiser records the agreed reach once.
+  const handleSetLegacyTarget = (orderId: string) => {
+    const target = Math.floor(Number(legacyTargets[orderId]));
+    if (!(target > 0)) return;
     setOrders((prev) =>
-      prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Approved" }, nonce, signature } : o))
+      prev.map((o) => (o.orderId === orderId ? { ...o, campaign: { hashtag: CAMPAIGN_HASHTAG, targetViews: target } } : o))
     );
   };
 
-  const handleClaimRefund = async (orderId: string) => {
-    const ord = orders.find((o) => o.orderId === orderId);
-    if (!ord) return;
-    setTxError(null);
-    try {
-      const s = signer ?? (await connect());
-      if (!s) throw new Error("Connect your wallet first");
-      if (ord.onChain) {
-        const tx = await claimRefund(s, ord.orderId);
-        setTxSuccessMessage(`Timeout refund executed on-chain: ${tx}`);
-      }
-      setOrders((prev) =>
-        prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Disputed", reason: "Refunded via 7-day timelock" } } : o))
-      );
-      refreshBalance();
-    } catch (e) {
-      setTxError(errMessage(e));
-    }
-  };
 
   const handleConfirmDispute = () => {
     if (!disputeOrderId) return;
@@ -355,6 +407,15 @@ export default function AdvertiserPortal() {
                 <option value={250000} className="bg-[#0c101a]">250K+ followers</option>
                 <option value={500000} className="bg-[#0c101a]">500K+ followers</option>
               </select>
+
+              <Link
+                href="/influencer"
+                title="Creators join from Creator Studio with their own payout wallet"
+                className="px-3.5 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 hover:bg-cyan-500/20 transition-all"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Creators join here
+              </Link>
             </div>
           </div>
 
@@ -364,7 +425,7 @@ export default function AdvertiserPortal() {
               const isInspecting = inspectingInfluencer.handle === inf.handle;
 
               return (
-                <ThreeDCard key={inf.handle}>
+                <ThreeDCard key={`${inf.platform}:${inf.handle}`}>
                   <div
                     onClick={() => setInspectingInfluencer(inf)}
                     className={`glass-panel p-5 rounded-xl border transition-all cursor-pointer h-full flex flex-col justify-between ${
@@ -380,7 +441,21 @@ export default function AdvertiserPortal() {
                             {inf.handle}
                             <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" />
                           </h3>
-                          <span className="text-[11px] font-mono text-gray-400">{inf.platform}</span>
+                          <span className="text-[11px] font-mono text-gray-400">
+                            {inf.platform}
+                            {inf.registered && (
+                              <a
+                                href={inf.registered.profileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="ml-2 text-emerald-400 hover:underline"
+                                title={`Stats measured from ${inf.registered.postsSampled} recent posts on ${new Date(inf.registered.scannedAt).toLocaleString()}`}
+                              >
+                                scanned
+                              </a>
+                            )}
+                          </span>
                         </div>
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 text-gray-400">
                           {formatAddress(inf.evmAddress)}
@@ -404,13 +479,13 @@ export default function AdvertiserPortal() {
                         <div>
                           <div className="text-[9px] uppercase tracking-wider text-gray-500">AUDIENCE</div>
                           <div className="text-xs font-semibold text-gray-300 tabular-nums mt-0.5">
-                            {inf.followers.toLocaleString()}
+                            {inf.followers ? inf.followers.toLocaleString("en-US") : "not public"}
                           </div>
                         </div>
                         <div>
                           <div className="text-[9px] uppercase tracking-wider text-gray-500">AVG VIEWS</div>
                           <div className="text-xs font-semibold text-gray-300 tabular-nums mt-0.5">
-                            {inf.avgViews.toLocaleString()}
+                            {inf.avgViews.toLocaleString("en-US")}
                           </div>
                         </div>
                       </div>
@@ -421,6 +496,19 @@ export default function AdvertiserPortal() {
                         <span className="text-gray-500 text-[10px] block">STANDARD RATE</span>
                         <span className="font-bold text-white tabular-nums">$1,500 USDC</span>
                       </div>
+
+                      {inf.registered && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Remove ${inf.handle} from the registry?`)) removeInfluencer(inf);
+                          }}
+                          title="Remove from registry"
+                          className="text-gray-500 hover:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
 
                       <button
                         onClick={(e) => {
@@ -461,6 +549,8 @@ export default function AdvertiserPortal() {
               const isAuditing = auditingOrders[order.orderId];
               const auditVerdict = auditResults[order.orderId];
               const liveUrl = (order.status as any).liveUrl;
+              const canVerify = ["PaymentVerified", "Accepted", "ProofSubmitted"].includes(order.status.type);
+              const isVerifying = verifyingOrders[order.orderId];
 
               return (
                 <div
@@ -477,12 +567,14 @@ export default function AdvertiserPortal() {
                           ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                           : isDisputed
                           ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          : order.status.type === "Rejected"
+                          ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
                           : isProofReady
                           ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/30"
                           : "bg-amber-500/10 text-amber-300 border-amber-500/30"
                       }`}
                     >
-                      {order.status.type}
+                      {order.status.type === "Rejected" ? "DECLINED BY CREATOR" : order.status.type}
                     </span>
                   </div>
 
@@ -505,6 +597,33 @@ export default function AdvertiserPortal() {
                         {formatAddress(order.evmTxHash)}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="p-3 bg-white/[0.02] rounded-lg border border-white/[0.06] text-xs font-mono space-y-2">
+                    {order.campaign ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-gray-400">
+                          Pays when a post (ideally <span className="text-cyan-300">#{order.campaign.hashtag}</span>) reaches
+                        </span>
+                        <span className="text-white font-semibold tabular-nums">{order.campaign.targetViews.toLocaleString("en-US")} views</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-amber-300">No agreed reach yet.</span>
+                        <input
+                          type="number"
+                          value={legacyTargets[order.orderId] ?? ""}
+                          onChange={(e) => setLegacyTargets((prev) => ({ ...prev, [order.orderId]: e.target.value }))}
+                          placeholder="Target views"
+                          className="w-32 px-2 py-1 rounded bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                        <button onClick={() => handleSetLegacyTarget(order.orderId)} className="px-2 py-1 rounded border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10">
+                          Set
+                        </button>
+                      </div>
+                    )}
+                    {order.verification && <VerificationSummary v={order.verification} />}
+                    {verifyError[order.orderId] && <div className="text-rose-400">{verifyError[order.orderId]}</div>}
                   </div>
 
                   {isProofReady && (
@@ -568,19 +687,39 @@ export default function AdvertiserPortal() {
                       </button>
                     )}
 
-                    {isProofReady && (
+                    {canVerify && (
                       <button
-                        onClick={() => handleApproveContent(order.orderId)}
-                        className="px-5 py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all font-mono flex items-center gap-2"
+                        onClick={() => handleVerifyAndRelease(order.orderId)}
+                        disabled={isVerifying || !order.campaign}
+                        title={`Scans the creator's posts since the deposit (#${order.campaign?.hashtag ?? CAMPAIGN_HASHTAG} first) and releases payment only if the agreed reach is proven`}
+                        className="px-5 py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 transition-all font-mono flex items-center gap-2"
                       >
-                        <Sparkles className="h-4 w-4" />
-                        Approve & Release Payment
+                        {isVerifying ? <Radar className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {isVerifying ? "Scanning profile..." : "Scan Posts & Release"}
                       </button>
                     )}
 
                     {isApproved && (
                       <div className="text-xs text-emerald-400 font-mono flex items-center gap-2 font-semibold">
-                        <CheckCircle2 className="h-4 w-4" /> Release voucher signed. Creator can claim on-chain.
+                        <CheckCircle2 className="h-4 w-4" /> Reach verified, release voucher signed. Creator can claim on-chain.
+                      </div>
+                    )}
+
+                    {order.status.type === "Rejected" && (
+                      <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs space-y-2 text-rose-300 font-sans">
+                        <div className="font-semibold font-mono flex items-center gap-1.5 text-rose-400">
+                          <X className="h-4 w-4" /> Creator Declined Campaign Offer
+                        </div>
+                        <div className="text-[11px] text-gray-400">
+                          {order.status.reason || "The creator chose not to accept this task."} Your {formatUsdc(order.amountUsdcRaw)} locked in escrow can be refunded.
+                        </div>
+                        <button
+                          onClick={() => handleClaimRefund(order.orderId)}
+                          disabled={reclaimingOrders[order.orderId]}
+                          className="px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 text-xs font-mono font-semibold"
+                        >
+                          {reclaimingOrders[order.orderId] ? "Processing..." : "Reclaim Escrowed Funds"}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -593,10 +732,10 @@ export default function AdvertiserPortal() {
 
       {/* Escrow Deposit Modal */}
       {isFundModalOpen && selectedInfluencer && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg">
-            <LaserBeamBorder glowColor="cyan">
-              <div className="p-6 sm:p-8 space-y-6">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-lg my-auto max-h-[92vh] flex flex-col">
+            <LaserBeamBorder glowColor="cyan" className="max-h-[90vh] flex flex-col">
+              <div className="p-5 sm:p-7 space-y-5 overflow-y-auto max-h-[85vh] pr-2 scrollbar-thin scrollbar-thumb-white/10">
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
@@ -648,6 +787,74 @@ export default function AdvertiserPortal() {
                   </div>
                 </div>
 
+                {/* Same-Device & Wallet Status Check */}
+                {!address ? (
+                  <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-xs space-y-2">
+                    <div className="text-cyan-300 font-semibold flex items-center gap-2">
+                      <Lock className="h-4 w-4" /> Wallet Not Connected
+                    </div>
+                    <div className="text-gray-400 text-[11px]">
+                      Connect your wallet to approve USDC and lock funds in smart escrow.
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => connect()}
+                        className="px-3 py-1.5 rounded bg-cyan-500 text-gray-950 text-xs font-semibold hover:bg-cyan-400 font-mono"
+                      >
+                        Connect Wallet
+                      </button>
+                      {CHAIN.chainId === 31337 && (
+                        <button
+                          type="button"
+                          onClick={() => connectDevAccount("account-0")}
+                          className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-cyan-300 text-xs font-mono border border-cyan-500/30"
+                        >
+                          Use Dev Advertiser (#0)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : address.toLowerCase() === selectedInfluencer.evmAddress.toLowerCase() ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1.5 text-amber-300">
+                    <div className="font-semibold flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4 shrink-0" /> Same Device: Creator Wallet Connected
+                    </div>
+                    <div className="text-[11px] text-gray-400">
+                      Your current wallet is the beneficiary creator&apos;s address ({formatAddress(address)}). The escrow contract prohibits self-dealing. Switch to an advertiser account to fund.
+                    </div>
+                    {CHAIN.chainId === 31337 && (
+                      <button
+                        type="button"
+                        onClick={() => connectDevAccount("account-0")}
+                        className="mt-1 px-3 py-1.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-mono font-semibold"
+                      >
+                        Switch to Advertiser Account #0
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-[11px] font-mono px-3 py-2 bg-white/[0.02] rounded-lg border border-white/[0.06] text-gray-400">
+                    <div>
+                      Payer: <span className="text-gray-200 font-semibold">{formatAddress(address)}</span>
+                      {usdcBalance !== null && (
+                        <span className="ml-2 text-cyan-300 font-semibold">
+                          ({(Number(usdcBalance) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC)
+                        </span>
+                      )}
+                    </div>
+                    {CHAIN.chainId === 31337 && (
+                      <button
+                        type="button"
+                        onClick={() => requestFaucet()}
+                        className="text-[10px] text-cyan-400 hover:underline"
+                      >
+                        +Claim 10k USDC
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-4 font-mono">
                   <div>
                     <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
@@ -680,11 +887,65 @@ export default function AdvertiserPortal() {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
+                      CAMPAIGN BRIEF (THE CREATOR&apos;S SCRIPTS ARE WRITTEN FROM THIS)
+                    </label>
+                    <input
+                      value={brief.productName}
+                      onChange={(e) => setBrief((b) => ({ ...b, productName: e.target.value }))}
+                      disabled={fundStep > 1}
+                      placeholder="What you're promoting, e.g. Acme Wallet"
+                      className="w-full px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-400 font-sans"
+                    />
+                    <textarea
+                      value={brief.keyMessage}
+                      onChange={(e) => setBrief((b) => ({ ...b, keyMessage: e.target.value }))}
+                      disabled={fundStep > 1}
+                      placeholder={"What the post must say, one point per line, e.g.\nSelf-custody in 30 seconds\nNo seed phrase to lose"}
+                      className="w-full h-20 px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-400 font-sans"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={brief.link}
+                        onChange={(e) => setBrief((b) => ({ ...b, link: e.target.value }))}
+                        disabled={fundStep > 1}
+                        placeholder="Link (optional)"
+                        className="px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-400 font-sans"
+                      />
+                      <input
+                        value={brief.mention}
+                        onChange={(e) => setBrief((b) => ({ ...b, mention: e.target.value }))}
+                        disabled={fundStep > 1}
+                        placeholder="@account to tag (optional)"
+                        className="px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-400 font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
+                      AGREED REACH (VIEWS ON ONE POST)
+                    </label>
+                    <input
+                      type="number"
+                      value={targetViews}
+                      onChange={(e) => setTargetViews(e.target.value)}
+                      disabled={fundStep > 1}
+                      className="mt-1 w-full px-4 py-3 bg-white/[0.04] border border-white/10 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-cyan-400 tabular-nums"
+                      placeholder="10000"
+                    />
+                    <p className="mt-1 text-[10px] text-gray-500 font-sans">
+                      Payment releases only when a post by the creator published after this deposit (ideally tagged #{CAMPAIGN_HASHTAG}) shows
+                      at least this many public views. Their median is {selectedInfluencer.avgViews.toLocaleString("en-US")}.
+                    </p>
+                  </div>
+
                   <div className="p-3 bg-white/[0.02] rounded-lg border border-white/10 text-xs text-gray-400 space-y-1">
                     <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-[11px]">
                       <Clock className="h-3.5 w-3.5" /> 7-DAY UNILATERAL REFUND TIMELOCK
                     </div>
-                    <p className="text-[11px] leading-relaxed">
+                    <p className="text-[11px] leading-relaxed font-sans">
                       Funds remain locked under smart contract guarantee. If milestones are unfulfilled, 
                       reclaim 100% of your funds unilaterally on Ethereum.
                     </p>
@@ -711,24 +972,33 @@ export default function AdvertiserPortal() {
                   >
                     Cancel
                   </button>
-                  <button
-                    disabled={isTransacting}
-                    onClick={handleNextFundingStep}
-                    className="px-6 py-2.5 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 transition-all font-mono flex items-center gap-2"
-                  >
-                    {isTransacting ? (
-                      <>
-                        <span className="h-3.5 w-3.5 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
-                        Executing Stage {fundStep}...
-                      </>
-                    ) : fundStep === 1 ? (
-                      "Authorize Allowance"
-                    ) : fundStep === 2 ? (
-                      "Deposit into Escrow"
-                    ) : (
-                      "Sync Canister & Finalize"
-                    )}
-                  </button>
+                  {!address ? (
+                    <button
+                      onClick={() => (CHAIN.chainId === 31337 ? connectDevAccount("account-0") : connect())}
+                      className="px-6 py-2.5 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] font-mono"
+                    >
+                      Connect Wallet to Deposit
+                    </button>
+                  ) : (
+                    <button
+                      disabled={isTransacting}
+                      onClick={handleNextFundingStep}
+                      className="px-6 py-2.5 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 transition-all font-mono flex items-center gap-2"
+                    >
+                      {isTransacting ? (
+                        <>
+                          <span className="h-3.5 w-3.5 border-2 border-gray-950 border-t-transparent rounded-full animate-spin" />
+                          Executing Stage {fundStep}...
+                        </>
+                      ) : fundStep === 1 ? (
+                        "Authorize Allowance"
+                      ) : fundStep === 2 ? (
+                        "Deposit into Escrow"
+                      ) : (
+                        "Sync Canister & Finalize"
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </LaserBeamBorder>
@@ -738,8 +1008,8 @@ export default function AdvertiserPortal() {
 
       {/* Dispute Modal */}
       {disputeOrderId && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md glass-panel p-6 rounded-2xl border border-rose-500/40 space-y-5">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-md my-auto max-h-[90vh] overflow-y-auto glass-panel p-6 rounded-2xl border border-rose-500/40 space-y-5">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <h3 className="font-bold text-white flex items-center gap-2">
                 <AlertOctagon className="h-5 w-5 text-rose-400" />
@@ -781,6 +1051,28 @@ export default function AdvertiserPortal() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function VerificationSummary({ v }: { v: VerificationResult }) {
+  return (
+    <div className={`pt-2 border-t border-white/[0.06] space-y-1 ${v.passed ? "text-emerald-300" : "text-amber-300"}`}>
+      <div className="flex items-center gap-1.5">
+        {v.passed ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+        <span className="break-words">{v.summary}</span>
+      </div>
+      <div className="text-[10px] text-gray-500">
+        Scanned {v.postsScanned} posts, {v.matchingPosts} tagged · {new Date(v.checkedAt).toLocaleString("en-US")}
+        {v.bestPost && (
+          <>
+            {" · "}
+            <a href={v.bestPost.url} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">
+              {v.bestPost.views === null ? "post" : `${v.bestPost.views.toLocaleString("en-US")} actual views`}
+            </a>
+          </>
+        )}
+      </div>
     </div>
   );
 }

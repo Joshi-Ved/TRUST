@@ -7,16 +7,49 @@ export interface InfluencerProfile {
   avgViews: number;
   engagementRateBps: number;
   botScorePct: number;
+  /** Content niche the creator chose at onboarding; drives script generation when their posts cannot be analysed. */
+  niche?: string;
+  /** Set for creators added through the registry; their stats come from a live profile scan. */
+  registered?: { addedAt: number; profileUrl: string; scannedAt: number; postsSampled: number };
+}
+
+/** The outcome the advertiser pays for. Checked by /api/verify-release before any payout is signed. */
+export interface CampaignTerms {
+  hashtag: string; // without '#', e.g. "trust_bc"
+  targetViews: number; // public view count the tagged post must reach
+  brief?: CampaignBrief;
+}
+
+/** What the sponsored post has to say. Written by the advertiser, used by the script generator. */
+export interface CampaignBrief {
+  productName: string;
+  keyMessage: string; // the points the post must get across
+  link?: string;
+  mention?: string; // account to tag, without @
+}
+
+/** Result of the last #hashtag scan of the creator's profile for this order. */
+export interface VerificationResult {
+  checkedAt: number;
+  passed: boolean;
+  summary: string;
+  postsScanned: number;
+  matchingPosts: number;
+  bestPost?: { url: string; views: number | null; likes: number | null; postedAt: number | null };
+  reportId?: string;
+  reportHash?: string;
 }
 
 export type OrderStatus =
   | { type: "Created" }
   | { type: "PaymentVerified" }
   | { type: "Accepted" }
+  | { type: "Rejected"; reason?: string }
   | { type: "ProofSubmitted"; liveUrl: string; platform: string; submittedAt: number }
   | { type: "Approved" }
   | { type: "Settled"; txHash?: string }
-  | { type: "Disputed"; reason: string };
+  | { type: "Disputed"; reason: string }
+  | { type: "Refunded" };
 
 export interface Order {
   orderId: string;
@@ -29,7 +62,11 @@ export interface Order {
   nonce: number;
   onChain?: boolean; // true when funded via a real TrustEscrow deposit
   signature?: string; // settlement signature from the ICP canister (t-ECDSA)
+  campaign?: CampaignTerms;
+  verification?: VerificationResult;
 }
+
+export const CAMPAIGN_HASHTAG = "trust_bc";
 
 // Initial mock data simulating on-chain ICP state
 export const INITIAL_INFLUENCERS: InfluencerProfile[] = [
@@ -42,6 +79,7 @@ export const INITIAL_INFLUENCERS: InfluencerProfile[] = [
     avgViews: 68500,
     engagementRateBps: 420,
     botScorePct: 3,
+    niche: "crypto",
   },
   {
     principal: "renrk-eyaaa",
@@ -52,6 +90,7 @@ export const INITIAL_INFLUENCERS: InfluencerProfile[] = [
     avgViews: 45000,
     engagementRateBps: 650,
     botScorePct: 1,
+    niche: "crypto",
   },
   {
     principal: "qaa6y-5yaaa",
@@ -62,6 +101,7 @@ export const INITIAL_INFLUENCERS: InfluencerProfile[] = [
     avgViews: 180000,
     engagementRateBps: 810,
     botScorePct: 4,
+    niche: "crypto",
   },
   {
     principal: "bkyz2-fmaaa",
@@ -72,6 +112,7 @@ export const INITIAL_INFLUENCERS: InfluencerProfile[] = [
     avgViews: 32000,
     engagementRateBps: 510,
     botScorePct: 2,
+    niche: "crypto",
   },
 ];
 
@@ -90,6 +131,7 @@ export const INITIAL_ORDERS: Order[] = [
     },
     createdAt: Date.now() - 86400000,
     nonce: 1,
+    campaign: { hashtag: "trust_bc", targetViews: 50_000 },
   },
   {
     orderId: "ord_sepolia_9912",
@@ -100,5 +142,6 @@ export const INITIAL_ORDERS: Order[] = [
     status: { type: "PaymentVerified" },
     createdAt: Date.now() - 43200000,
     nonce: 0,
+    campaign: { hashtag: "trust_bc", targetViews: 40_000 },
   },
 ];

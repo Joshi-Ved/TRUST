@@ -28,7 +28,7 @@ export function parseTarget(raw: string): { url: URL; platform: Platform } {
   return { url, platform: hit[1] };
 }
 
-async function getTextWithRetry(url: string, headers: Record<string, string> = {}, maxRetries = 2): Promise<string> {
+export async function getTextWithRetry(url: string, headers: Record<string, string> = {}, maxRetries = 2): Promise<string> {
   const host = new URL(url).hostname;
   const now = Date.now();
   const last = lastRequestTime[host] || 0;

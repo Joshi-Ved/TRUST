@@ -3,13 +3,17 @@ import type { AuditReport, AuditRequest, Check, Flag, Snapshot, Verdict } from "
 
 const norm = (s: string) => s.toLowerCase().replace(/^[#@]/, "");
 
+/** True when `text` contains #tag as a whole hashtag (#trust_bc matches, #trust_bcx does not). */
+export const hasHashtag = (text: string, tag: string) =>
+  new RegExp(`#${norm(tag).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w])`, "i").test(text);
+
 function requirementChecks(snap: Snapshot, req: AuditRequest): Check[] {
   const checks: Check[] = [];
   const text = snap.text.toLowerCase();
   const r = req.requirements ?? {};
 
   for (const tag of r.hashtags ?? []) {
-    const ok = new RegExp(`#${norm(tag).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w])`, "i").test(snap.text);
+    const ok = hasHashtag(snap.text, tag);
     checks.push({ id: `tag:${tag}`, label: `Hashtag #${norm(tag)}`, pass: ok, detail: ok ? "Found in the post" : "Not found in the post text" });
   }
   for (const m of r.mentions ?? []) {
@@ -53,6 +57,19 @@ function requirementChecks(snap: Snapshot, req: AuditRequest): Check[] {
     }
   }
 
+  if (req.targetViews) {
+    const ok = snap.views === null ? null : snap.views >= req.targetViews;
+    checks.push({
+      id: "target",
+      label: "Agreed reach reached",
+      pass: ok,
+      detail:
+        snap.views === null
+          ? "Platform does not publish a view count for this post"
+          : `Public count ${snap.views.toLocaleString()} of ${req.targetViews.toLocaleString()} agreed views`,
+    });
+  }
+
   if (req.claimedViews && snap.views !== null) {
     const ok = snap.views >= req.claimedViews * 0.9;
     checks.push({
@@ -67,7 +84,7 @@ function requirementChecks(snap: Snapshot, req: AuditRequest): Check[] {
   return checks;
 }
 
-function anomalyFlags(snap: Snapshot, history: Snapshot[]): Flag[] {
+export function anomalyFlags(snap: Snapshot, history: Snapshot[]): Flag[] {
   const f: Flag[] = [];
   const { views, likes, reposts, replies, authorFollowers } = snap;
 

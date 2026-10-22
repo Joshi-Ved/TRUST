@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Kanban,
@@ -27,22 +28,44 @@ import { formatAddress, formatUsdc } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar";
 import { useWallet } from "@/components/web3/WalletProvider";
 import { useOrders } from "@/lib/orders";
-import { errMessage, releaseWithProof } from "@/lib/chain";
+import { useInfluencers } from "@/lib/influencers";
+import type { DraftBasis, DraftVariation } from "@/lib/ai/compose";
+import { errMessage, releaseWithProof, CHAIN, LOCAL_DEV_ACCOUNTS } from "@/lib/chain";
 import { ThreeDCard } from "@/components/ui/ThreeDCard";
 import { LaserBeamBorder } from "@/components/ui/LaserBeamBorder";
 
-interface DraftVariation {
-  id: string;
-  label: string;
-  hook: string;
-  body: string;
-  hashtags: string[];
-  toneRationale: string;
-}
-
 export default function InfluencerPortal() {
-  const [orders, setOrders] = useOrders();
-  const { signer, address, connect, refreshBalance } = useWallet();
+  const [allOrders, setOrders] = useOrders();
+  const { signer, address, connect, connectDevAccount, connecting, refreshBalance, ready } = useWallet();
+  const { influencers, loaded } = useInfluencers();
+  const router = useRouter();
+
+  // Match creator profile by connected wallet address
+  const myCreatorProfile = address
+    ? influencers.find((i) => i.evmAddress.toLowerCase() === address.toLowerCase()) ?? null
+    : null;
+
+  // Selected creator filter for same-device multi-role testing
+  const [selectedCreatorAddr, setSelectedCreatorAddr] = useState<string>("all");
+
+  const effectiveFilter =
+    selectedCreatorAddr !== "all"
+      ? selectedCreatorAddr
+      : myCreatorProfile
+      ? myCreatorProfile.evmAddress.toLowerCase()
+      : "all";
+
+  // Filter orders by active viewing creator or show all
+  const orders =
+    effectiveFilter === "all"
+      ? allOrders
+      : allOrders.filter((o) => o.influencerAddress.toLowerCase() === effectiveFilter.toLowerCase());
+
+  const me =
+    (effectiveFilter !== "all"
+      ? influencers.find((i) => i.evmAddress.toLowerCase() === effectiveFilter.toLowerCase())
+      : null) || myCreatorProfile;
+
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimSuccess, setClaimSuccess] = useState<string | null>(null);
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
@@ -51,15 +74,12 @@ export default function InfluencerPortal() {
   const [platform, setPlatform] = useState("X / Twitter");
   const [claimedOrders, setClaimedOrders] = useState<Record<string, boolean>>({});
 
-  // Creator Profile Verification State
-  const [isVerifiedCreator, setIsVerifiedCreator] = useState(false);
-  const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-
   // Gen AI Draft Generator State
   const [isAiDraftOpen, setIsAiDraftOpen] = useState(false);
   const [isGeneratingDrafts, setIsGeneratingDrafts] = useState(false);
   const [draftVariations, setDraftVariations] = useState<DraftVariation[]>([]);
+  const [draftBasis, setDraftBasis] = useState<DraftBasis | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [copiedDraftId, setCopiedDraftId] = useState<string | null>(null);
 
   // Categorize orders for Kanban columns
@@ -67,26 +87,17 @@ export default function InfluencerPortal() {
   const inProgressOrders = orders.filter((o) => o.status.type === "Accepted");
   const proofSubmittedOrders = orders.filter((o) => o.status.type === "ProofSubmitted");
   const approvedOrders = orders.filter((o) => o.status.type === "Approved" || o.status.type === "Settled");
-
-  const handleVerifyOwnership = async () => {
-    setIsVerifying(true);
-    setVerificationError(null);
-    try {
-      const s = signer ?? (await connect());
-      if (!s) throw new Error("Connect your wallet to verify handle");
-      const message = `TRUST Protocol Creator Handle Verification\nHandle: @satoshi_vibes\nSigner: ${await s.getAddress()}\nTimestamp: ${Date.now()}`;
-      await s.signMessage(message);
-      setIsVerifiedCreator(true);
-    } catch (e: any) {
-      setVerificationError(errMessage(e));
-    } finally {
-      setIsVerifying(false);
-    }
-  };
+  const rejectedOrders = orders.filter((o) => o.status.type === "Rejected");
 
   const handleAcceptOrder = (orderId: string) => {
     setOrders((prev) =>
       prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Accepted" } } : o))
+    );
+  };
+
+  const handleRejectOrder = (orderId: string, reason = "Declined by creator") => {
+    setOrders((prev) =>
+      prev.map((o) => (o.orderId === orderId ? { ...o, status: { type: "Rejected", reason } } : o))
     );
   };
 
@@ -148,30 +159,23 @@ export default function InfluencerPortal() {
     setSelectedOrderId(orderId);
     setIsAiDraftOpen(true);
     setIsGeneratingDrafts(true);
+    setDraftVariations([]);
+    setDraftBasis(null);
+    setDraftError(null);
 
     try {
       const res = await fetch("/api/ai/generate-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          creatorHandle: "@satoshi_vibes",
-          brief: {
-            campaignTitle: "TRUST Protocol Launch Sponsorship",
-            productName: "TRUST Protocol",
-            targetAudience: "Web3 Builders, Crypto Influencers & Brands",
-            keyDeliverables: "1 In-depth thread or video review highlighting trustless escrow and instant t-ECDSA releases",
-            requiredHashtags: ["#TRUST", "#CryptoEscrow", "#Web3"],
-            callToAction: "https://trust-protocol.io/escrow",
-          },
-        }),
+        body: JSON.stringify({ orderId }),
       });
 
       const data = await res.json();
-      if (data.variations) {
-        setDraftVariations(data.variations);
-      }
-    } catch (err) {
-      console.error(err);
+      if (!res.ok) throw new Error(data.error || "Script generation failed");
+      setDraftVariations(data.variations);
+      setDraftBasis(data.basis);
+    } catch (err: any) {
+      setDraftError(err.message);
     } finally {
       setIsGeneratingDrafts(false);
     }
@@ -183,6 +187,29 @@ export default function InfluencerPortal() {
     setTimeout(() => setCopiedDraftId(null), 2000);
   };
 
+  if (!ready || !loaded) {
+    return (
+      <div className="min-h-screen text-gray-100 flex flex-col bg-[#07090e]">
+        <Navbar />
+        <main className="max-w-[560px] w-full mx-auto px-6 py-20 text-center space-y-5 flex-1">
+          <p className="text-sm font-mono text-cyan-400">Loading Creator Studio...</p>
+        </main>
+      </div>
+    );
+  }
+
+  const activeDisplayCreator =
+    me ||
+    (selectedCreatorAddr !== "all"
+      ? influencers.find((i) => i.evmAddress.toLowerCase() === selectedCreatorAddr.toLowerCase())
+      : influencers[0]) ||
+    influencers[0];
+
+  const totalSecuredValue = orders.reduce(
+    (sum, o) => sum + (o.status.type !== "Settled" && o.status.type !== "Rejected" ? o.amountUsdcRaw : 0),
+    0
+  );
+
   return (
     <div className="min-h-screen text-gray-100 flex flex-col bg-[#07090e]">
       <Navbar />
@@ -192,32 +219,63 @@ export default function InfluencerPortal() {
         <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
           <div className="flex items-center gap-5">
             <div className="h-16 w-16 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-emerald-500/20 to-cyan-500/10 border border-cyan-500/40 flex items-center justify-center font-bold text-cyan-300 text-2xl shadow-[0_0_20px_rgba(6,182,212,0.2)]">
-              S
+              {(activeDisplayCreator?.handle ?? "@creator").charAt(1).toUpperCase()}
             </div>
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl font-bold text-white tracking-tight">@satoshi_vibes</h1>
-                {isVerifiedCreator ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-medium flex items-center gap-1">
-                    <CheckCircle className="h-3 w-3" /> VERIFIED WALLET SIGNER
-                  </span>
-                ) : (
-                  <button
-                    onClick={handleVerifyOwnership}
-                    disabled={isVerifying}
-                    className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono hover:bg-cyan-500/20 transition-all flex items-center gap-1"
+                <h1 className="text-xl font-bold text-white tracking-tight">
+                  {activeDisplayCreator?.handle ?? "Creator Studio"}
+                </h1>
+                {activeDisplayCreator?.registered ? (
+                  <Link
+                    href="/influencer/onboarding"
+                    className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-medium flex items-center gap-1"
+                    title="Account and payout wallet verified. Click to update registration."
                   >
-                    <ShieldCheck className="h-3 w-3" />
-                    {isVerifying ? "Signing Challenge..." : "Verify Creator Handle"}
-                  </button>
+                    <CheckCircle className="h-3 w-3" /> VERIFIED · {activeDisplayCreator.platform}
+                  </Link>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" /> SIMULATED · {activeDisplayCreator?.platform ?? "Web3"}
+                  </span>
                 )}
+
+                {/* Creator Filter for Same-Device Testing */}
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-[10px] uppercase font-mono text-gray-500">View tasks for:</span>
+                  <select
+                    value={selectedCreatorAddr}
+                    onChange={(e) => setSelectedCreatorAddr(e.target.value)}
+                    className="px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#0b0f19] text-gray-200">
+                      All Creators ({allOrders.length} tasks)
+                    </option>
+                    {influencers.map((inf) => (
+                      <option key={inf.evmAddress} value={inf.evmAddress.toLowerCase()} className="bg-[#0b0f19] text-gray-200">
+                        {inf.handle} ({formatAddress(inf.evmAddress)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <div className="text-xs font-mono text-gray-400 flex flex-wrap items-center gap-3">
-                <span>EVM: 0x7099...79C8</span>
-                <span>·</span>
-                <span>AUDIENCE: 245,000</span>
-                <span>·</span>
-                <span className="text-emerald-400 font-semibold">AUTHENTICITY: 97%</span>
+                {activeDisplayCreator ? (
+                  <>
+                    <span title={activeDisplayCreator.evmAddress}>
+                      PAYOUT WALLET: {formatAddress(activeDisplayCreator.evmAddress)}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      AUDIENCE: {activeDisplayCreator.followers ? activeDisplayCreator.followers.toLocaleString("en-US") : "not public"}
+                    </span>
+                    <span>·</span>
+                    <span>MEDIAN VIEWS: {activeDisplayCreator.avgViews.toLocaleString("en-US")}</span>
+                  </>
+                ) : (
+                  <span>Register with your wallet to receive escrow payments.</span>
+                )}
               </div>
             </div>
           </div>
@@ -226,7 +284,7 @@ export default function InfluencerPortal() {
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-400">SECURED ESCROW BALANCE</div>
               <div className="text-2xl font-bold text-white tabular-nums tracking-tight mt-0.5">
-                $4,700.00 <span className="text-sm font-normal text-cyan-400">USDC</span>
+                {formatUsdc(totalSecuredValue)}
               </div>
             </div>
             <div className="h-10 w-px bg-white/10" />
@@ -239,14 +297,7 @@ export default function InfluencerPortal() {
           </div>
         </div>
 
-        {verificationError && (
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
-            <span>{verificationError}</span>
-            <button onClick={() => setVerificationError(null)} className="text-rose-400 hover:text-white">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+
 
         {claimSuccess && (
           <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center justify-between">
@@ -303,16 +354,45 @@ export default function InfluencerPortal() {
                         </span>
                       </div>
 
-                      <div className="text-xs text-gray-400 leading-relaxed font-sans">
-                        Funds locked on Ethereum. Accept order to activate deliverable milestone.
+                      {ord.campaign && (
+                        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] text-xs font-sans space-y-1.5">
+                          {ord.campaign.brief?.productName && (
+                            <div className="font-semibold text-white flex items-center gap-1.5">
+                              <span className="text-[9px] uppercase font-mono px-1 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                                Campaign
+                              </span>
+                              <span className="truncate">{ord.campaign.brief.productName}</span>
+                            </div>
+                          )}
+                          {ord.campaign.brief?.keyMessage && (
+                            <div className="text-[11px] text-gray-300 line-clamp-2">
+                              {ord.campaign.brief.keyMessage}
+                            </div>
+                          )}
+                          <div className="text-[10px] font-mono text-gray-400 pt-1 flex items-center justify-between border-t border-white/[0.04]">
+                            <span>Reach: <b className="text-cyan-300">{ord.campaign.targetViews.toLocaleString("en-US")} views</b></span>
+                            <span className="text-gray-500">#{ord.campaign.hashtag}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="text-[11px] text-gray-400 leading-relaxed font-sans">
+                        Advertiser escrow funded. Review terms and accept or decline.
                       </div>
 
-                      <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between">
+                      <div className="pt-2 border-t border-white/[0.06] flex items-center gap-2">
                         <button
                           onClick={() => handleAcceptOrder(ord.orderId)}
-                          className="w-full py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all font-mono"
+                          className="flex-1 py-2 rounded-lg bg-cyan-500 text-gray-950 font-semibold text-xs tracking-wide uppercase hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all font-mono flex items-center justify-center gap-1.5"
                         >
-                          Accept Campaign
+                          <Check className="h-3.5 w-3.5" /> Accept Task
+                        </button>
+                        <button
+                          onClick={() => handleRejectOrder(ord.orderId)}
+                          className="px-3 py-2 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20 text-xs font-semibold uppercase transition-all font-mono"
+                          title="Decline this campaign task"
+                        >
+                          Decline
                         </button>
                       </div>
                     </div>
@@ -463,8 +543,8 @@ export default function InfluencerPortal() {
 
       {/* Proof Submission Modal */}
       {isSubmitOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md glass-panel p-6 sm:p-8 rounded-2xl border border-white/10 space-y-6">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-md my-auto max-h-[88vh] overflow-y-auto glass-panel p-6 sm:p-8 rounded-2xl border border-white/10 space-y-6 custom-scrollbar">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <h3 className="font-bold text-white flex items-center gap-2">
                 <FileCheck className="h-5 w-5 text-cyan-400" />
@@ -524,8 +604,8 @@ export default function InfluencerPortal() {
 
       {/* AI Draft Generator Modal */}
       {isAiDraftOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl glass-panel p-6 sm:p-8 rounded-2xl border border-cyan-500/30 space-y-6 max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl my-auto max-h-[88vh] overflow-y-auto glass-panel p-6 sm:p-8 rounded-2xl border border-cyan-500/30 space-y-6 custom-scrollbar">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <h3 className="font-bold text-white flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-cyan-400" />
@@ -539,14 +619,39 @@ export default function InfluencerPortal() {
             {isGeneratingDrafts ? (
               <div className="py-12 text-center space-y-3 font-mono text-xs text-cyan-400">
                 <div className="h-8 w-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-                <div>Generating audience-optimized variations via AI engine...</div>
+                <div>Reading your recent posts and writing scripts from the campaign brief...</div>
               </div>
             ) : draftVariations.length === 0 ? (
-              <div className="py-8 text-center text-xs text-gray-400 font-mono">
-                No draft variations generated. Click re-run to generate scripts.
-              </div>
+              <div className="py-8 text-center text-xs text-rose-400 font-mono">{draftError ?? "No scripts generated."}</div>
             ) : (
               <div className="space-y-4">
+                {draftBasis && (
+                  <div className="p-4 rounded-xl bg-cyan-500/[0.05] border border-cyan-500/20 text-xs space-y-2">
+                    <div className="font-mono text-[10px] uppercase tracking-wider text-cyan-400">What these scripts are based on</div>
+                    <div className="text-gray-300">
+                      <span className="text-white font-semibold">Content:</span> {draftBasis.brief.productName}: {draftBasis.brief.keyMessage}
+                      {draftBasis.briefSource === "default" && <span className="text-amber-300"> (default brief: the advertiser did not write one)</span>}
+                    </div>
+                    <div className="text-gray-300">
+                      <span className="text-white font-semibold">Voice:</span>{" "}
+                      {draftBasis.styleSource === "posts"
+                        ? `your style, measured from ${draftBasis.postsAnalyzed} of your recent posts`
+                        : draftBasis.styleSource === "niche"
+                        ? `the ${draftBasis.niche} niche (your posts could not be analysed)`
+                        : "neutral (no posts or niche available)"}
+                      {" · "}
+                      <span className="text-gray-400">{draftBasis.writer === "llm" ? `written by ${draftBasis.model ?? "the AI model"}` : "style-matched templates (AI writer unavailable)"}</span>
+                    </div>
+                    {draftBasis.styleSummary.length > 0 && (
+                      <ul className="list-disc pl-4 text-gray-400 space-y-0.5">
+                        {draftBasis.styleSummary.map((s) => (
+                          <li key={s}>{s}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {draftBasis.note && <div className="text-amber-300">{draftBasis.note}</div>}
+                  </div>
+                )}
                 {draftVariations.map((draft) => (
                   <div key={draft.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
                     <div className="flex items-center justify-between">

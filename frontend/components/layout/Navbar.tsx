@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShieldCheck, Wallet, Activity, ExternalLink } from "lucide-react";
+import { ShieldCheck, Wallet, Activity, ExternalLink, ArrowRightLeft } from "lucide-react";
 import { useWallet } from "@/components/web3/WalletProvider";
+import { TransferModal } from "@/components/web3/TransferModal";
 import { formatAddress } from "@/lib/utils";
 import { CHAIN } from "@/lib/chain";
 
@@ -12,11 +14,13 @@ const NAV = [
   { href: "/advertiser", label: "Advertiser Portal" },
   { href: "/influencer", label: "Creator Studio" },
   { href: "/audit", label: "Post Audit" },
+  { href: "/addresses", label: "Address Book" },
 ];
 
 export function Navbar() {
   const pathname = usePathname();
-  const { address, usdcBalance, connect, connecting, error } = useWallet();
+  const { address, usdcBalance, ethBalance, connect, connectDevAccount, activeDevAccount, requestFaucet, connecting, error } = useWallet();
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 bg-[#080b12]/85 backdrop-blur-xl border-b border-white/[0.08]">
@@ -56,7 +60,7 @@ export function Navbar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Active Network Pill */}
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/[0.03] border border-white/[0.06] text-xs">
             <span className="relative flex h-2 w-2">
@@ -66,12 +70,62 @@ export function Navbar() {
             <span className="text-gray-400 font-mono text-[11px]">{CHAIN.network === "localhost" ? "Localhost (31337)" : "Sepolia (11155111)"}</span>
           </div>
 
+          {/* Localhost Role / Dev Account Switcher (Same-device testing) */}
+          {CHAIN.chainId === 31337 && (
+            <div className="relative">
+              <select
+                value={activeDevAccount ? activeDevAccount.id : "metamask"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "metamask") connect();
+                  else connectDevAccount(val);
+                }}
+                className="px-2.5 py-1.5 rounded-md bg-white/[0.05] border border-cyan-500/30 text-cyan-300 font-mono text-[11px] font-medium hover:border-cyan-400 focus:outline-none transition-all cursor-pointer"
+                title="Switch active account to test Advertiser and Influencer roles on the same device"
+              >
+                <option value="account-0" className="bg-[#0b0f19] text-gray-200">
+                  Role: Advertiser (#0)
+                </option>
+                <option value="account-1" className="bg-[#0b0f19] text-gray-200">
+                  Role: Creator @satoshi (#1)
+                </option>
+                <option value="account-2" className="bg-[#0b0f19] text-gray-200">
+                  Role: Creator @defi (#2)
+                </option>
+                <option value="metamask" className="bg-[#0b0f19] text-gray-200">
+                  Role: MetaMask
+                </option>
+              </select>
+            </div>
+          )}
+
           {address && (
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-cyan-500/[0.06] border border-cyan-500/20 text-xs">
-              <span className="text-gray-400 text-[11px]">Balance:</span>
+              <span className="text-gray-400 text-[11px]">Bal:</span>
               <span className="text-cyan-300 font-mono font-medium">
                 {usdcBalance === null ? "—" : (Number(usdcBalance) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC
               </span>
+              <span className="text-gray-600">·</span>
+              <span className="text-emerald-300 font-mono font-medium">
+                {ethBalance === null ? "—" : (Number(ethBalance) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 2 })} ETH
+              </span>
+              {CHAIN.chainId === 31337 && (
+                <button
+                  onClick={() => requestFaucet()}
+                  title="Claim 10,000 free test USDC and 300 ETH"
+                  className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-200 border border-cyan-500/40 transition-colors"
+                >
+                  +Faucet
+                </button>
+              )}
+              <button
+                onClick={() => setIsTransferOpen(true)}
+                title="Direct transfer USDC or ETH between wallets"
+                className="ml-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 transition-colors flex items-center gap-1 font-mono"
+              >
+                <ArrowRightLeft className="h-3 w-3" />
+                Transfer
+              </button>
             </div>
           )}
 
@@ -91,6 +145,8 @@ export function Navbar() {
           </button>
         </div>
       </div>
+
+      <TransferModal isOpen={isTransferOpen} onClose={() => setIsTransferOpen(false)} />
     </header>
   );
 }

@@ -31,7 +31,7 @@ thread_local! {
     static ORDERS: RefCell<HashMap<String, Order>> = RefCell::new(HashMap::new());
     static INFLUENCERS: RefCell<HashMap<String, InfluencerProfile>> = RefCell::new(HashMap::new());
     static NONCE_COUNTER: RefCell<u64> = RefCell::new(1);
-    static EVM_RPC_URL: RefCell<String> = RefCell::new("https://rpc.ankr.com/eth_sepolia".to_string());
+    static EVM_RPC_URL: RefCell<String> = RefCell::new("https://ethereum-sepolia-rpc.publicnode.com".to_string());
     static KEY_NAME: RefCell<String> = RefCell::new("dfx_test_key".to_string());
     static ADMIN: RefCell<Principal> = RefCell::new(Principal::anonymous());
 }

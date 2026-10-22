@@ -3,37 +3,70 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INITIAL_ORDERS, Order } from "./icp-agent";
 
-const KEY = "trust.orders.v1";
+// Pre-server versions kept orders in localStorage; entries found there are moved to the server once.
+const LEGACY_KEY = "trust.orders.v1";
+const POLL_MS = 5000;
 
-/** Orders shared between advertiser and creator portals (same browser) via localStorage. */
+async function postOrders(changed: Order[]): Promise<Order[]> {
+  const res = await fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changed),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Could not save orders");
+  return data;
+}
+
+/**
+ * Orders shared between advertiser and creator portals, persisted on the server
+ * (frontend/.data/orders.json) and polled so every open tab sees status changes.
+ */
 export function useOrders() {
   const [orders, setOrdersState] = useState<Order[]>(INITIAL_ORDERS);
-  const loaded = useRef(false);
+  const current = useRef<Order[]>(INITIAL_ORDERS);
+
+  const apply = useCallback((next: Order[]) => {
+    current.current = next;
+    setOrdersState(next);
+  }, []);
+
+  const reload = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders", { cache: "no-store" });
+      if (res.ok) apply(await res.json());
+    } catch {}
+  }, [apply]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setOrdersState(JSON.parse(raw));
-    } catch {}
-    loaded.current = true;
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY && e.newValue) setOrdersState(JSON.parse(e.newValue));
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
-  const setOrders = useCallback((update: Order[] | ((prev: Order[]) => Order[])) => {
-    setOrdersState((prev) => {
-      const next = typeof update === "function" ? update(prev) : update;
-      if (loaded.current) {
+    (async () => {
+      let legacy: Order[] = [];
+      try {
+        legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || "[]");
+      } catch {}
+      if (legacy.length) {
         try {
-          localStorage.setItem(KEY, JSON.stringify(next));
+          apply(await postOrders(legacy));
+          localStorage.removeItem(LEGACY_KEY);
+          return;
         } catch {}
       }
-      return next;
-    });
-  }, []);
+      await reload();
+    })();
+    const timer = setInterval(() => document.visibilityState === "visible" && reload(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [apply, reload]);
 
-  return [orders, setOrders] as const;
+  const setOrders = useCallback(
+    (update: Order[] | ((prev: Order[]) => Order[])) => {
+      const prev = current.current;
+      const next = typeof update === "function" ? update(prev) : update;
+      apply(next);
+      const changed = next.filter((o) => !prev.includes(o));
+      if (changed.length) postOrders(changed).then(apply).catch(() => reload());
+    },
+    [apply, reload]
+  );
+
+  return [orders, setOrders, reload] as const;
 }

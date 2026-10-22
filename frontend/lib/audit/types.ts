@@ -31,6 +31,8 @@ export interface AuditRequest {
   expectedHandle?: string;
   orderCreatedAt?: number;
   claimedViews?: number;
+  /** Views the post must reach for the campaign to count as delivered. */
+  targetViews?: number;
   requirements?: Requirements;
 }
 
